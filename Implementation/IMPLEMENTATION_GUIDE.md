@@ -1,4 +1,4 @@
-# Du Chinese Chrome Extension -- Implementation Guide
+# HanziGlow Chrome Extension -- Implementation Guide
 
 This document breaks the full [SPEC.md](SPEC.md) into **8 discrete implementation steps**, each designed to be completed in a single LLM coding session. Every step includes its own unit tests in a dedicated `tests/` directory. Steps are ordered by dependency -- each step builds only on files produced by prior steps.
 
@@ -152,7 +152,7 @@ Bootstrap the entire project from scratch -- configuration files, build pipeline
 #### 1a. Initialize the project
 
 ```bash
-mkdir du-chinese-extension && cd du-chinese-extension
+mkdir hanziglow-extension && cd hanziglow-extension
 npm init -y
 ```
 
@@ -1316,33 +1316,33 @@ Build the floating overlay that renders pinyin annotations, translation text, an
 
 Export the following functions:
 
-1. **`createOverlay(): ShadowRoot`**: Creates a `<div id="dc-extension-root">` in the document body, attaches an open Shadow DOM, injects the CSS (from `overlay.css`), and returns the shadow root. If the root already exists, reuses it.
+1. **`createOverlay(): ShadowRoot`**: Creates a `<div id="hg-extension-root">` in the document body, attaches an open Shadow DOM, injects the CSS (from `overlay.css`), and returns the shadow root. If the root already exists, reuses it.
 
 2. **`showOverlay(words: WordData[], rect: DOMRect, theme: Theme): void`**: Clears the shadow root content and renders:
    - A close button (X) in the top-right corner.
-   - A `.dc-pinyin-row` div containing `<ruby>` elements for each word.
-   - A `.dc-translation` div that initially shows a loading indicator.
+   - A `.hg-pinyin-row` div containing `<ruby>` elements for each word.
+   - A `.hg-translation` div that initially shows a loading indicator.
    - Positions the overlay near `rect` (below the selection by default, above if insufficient space, never exceeding viewport bounds).
 
 3. **`updateOverlay(words: Required<WordData>[], translation: string): void`**: Updates the overlay with LLM-enhanced data: replaces the ruby elements with clickable words and replaces the loading indicator with the translation text.
 
 4. **`dismissOverlay(): void`**: Removes the overlay from the DOM.
 
-5. **`renderRubyText(words: WordData[]): string`**: Converts `WordData[]` to HTML string with `<ruby>` / `<rt>` tags. Each ruby element has `class="dc-word"` and `data-chars` / `data-definition` attributes.
+5. **`renderRubyText(words: WordData[]): string`**: Converts `WordData[]` to HTML string with `<ruby>` / `<rt>` tags. Each ruby element has `class="hg-word"` and `data-chars` / `data-definition` attributes.
 
 6. **`calculatePosition(rect: DOMRect, overlayWidth: number, overlayHeight: number): { top: number; left: number }`**: Pure function that computes overlay position given the selection rect and viewport dimensions.
 
-7. Internal word click handler that toggles a `.dc-definition-card` element below the clicked word.
+7. Internal word click handler that toggles a `.hg-definition-card` element below the clicked word.
 
 #### 6b. Create `src/content/overlay.css`
 
 Use the full CSS from SPEC.md Section 7 (Step 7.2). Include:
 - `:host { all: initial; }` to reset styles within Shadow DOM.
-- `.dc-overlay` with fixed positioning, max-width 500px, max-height 400px, rounded corners, shadow, backdrop blur.
-- Light (`.dc-light`) and dark (`.dc-dark`) theme classes.
+- `.hg-overlay` with fixed positioning, max-width 500px, max-height 400px, rounded corners, shadow, backdrop blur.
+- Light (`.hg-light`) and dark (`.hg-dark`) theme classes.
 - `ruby`, `rt` styling.
-- `.dc-translation`, `.dc-definition-card`, `.dc-close-btn`, `.dc-loading` classes.
-- `dc-fade-in` animation.
+- `.hg-translation`, `.hg-definition-card`, `.hg-close-btn`, `.hg-loading` classes.
+- `hg-fade-in` animation.
 
 ### Test file: `tests/content/overlay.test.ts`
 
@@ -1367,7 +1367,7 @@ describe("overlay", () => {
     it("creates a shadow DOM root in the document body", () => {
       const shadowRoot = createOverlay();
       expect(shadowRoot).toBeDefined();
-      const host = document.getElementById("dc-extension-root");
+      const host = document.getElementById("hg-extension-root");
       expect(host).not.toBeNull();
       expect(host!.shadowRoot).toBe(shadowRoot);
     });
@@ -1393,10 +1393,10 @@ describe("overlay", () => {
       expect(html).toContain("世界");
     });
 
-    it("adds dc-word class and data-chars attribute", () => {
+    it("adds hg-word class and data-chars attribute", () => {
       const words: WordData[] = [{ chars: "好", pinyin: "hǎo" }];
       const html = renderRubyText(words);
-      expect(html).toContain('class="dc-word"');
+      expect(html).toContain('class="hg-word"');
       expect(html).toContain('data-chars="好"');
     });
 
@@ -1432,7 +1432,7 @@ describe("overlay", () => {
       const rect = { top: 100, left: 200, bottom: 120, right: 300, width: 100, height: 20 } as DOMRect;
       showOverlay(words, rect, "light");
 
-      const host = document.getElementById("dc-extension-root");
+      const host = document.getElementById("hg-extension-root");
       expect(host).not.toBeNull();
       const shadow = host!.shadowRoot!;
       expect(shadow.innerHTML).toContain("好");
@@ -1445,7 +1445,7 @@ describe("overlay", () => {
       showOverlay(words, rect, "light");
       dismissOverlay();
 
-      const host = document.getElementById("dc-extension-root");
+      const host = document.getElementById("hg-extension-root");
       expect(host).toBeNull();
     });
   });
@@ -1461,10 +1461,10 @@ describe("overlay", () => {
         "Good."
       );
 
-      const host = document.getElementById("dc-extension-root");
+      const host = document.getElementById("hg-extension-root");
       const shadow = host!.shadowRoot!;
       expect(shadow.innerHTML).toContain("Good.");
-      expect(shadow.querySelector(".dc-loading")).toBeNull();
+      expect(shadow.querySelector(".hg-loading")).toBeNull();
     });
   });
 });
@@ -1652,7 +1652,7 @@ Build the settings popup UI, implement all polishing touches (mixed text handlin
 
 Build a settings form with:
 
-- Title: "Du Chinese Extension"
+- Title: "HanziGlow Extension"
 - **LLM Provider**: `<select id="provider">` with options: OpenAI, Google Gemini, Ollama (local), Custom. When the user selects a provider, JavaScript auto-fills the Base URL and Model fields from `PROVIDER_PRESETS` in `constants.ts`, and shows/hides the API Key field based on `requiresApiKey`.
 - **API Key**: `<input type="password" id="api-key">` with a show/hide toggle button. Hidden when the selected provider is Ollama (since it runs locally without auth).
 - **API Base URL**: `<input type="text" id="base-url">` with placeholder auto-filled from the selected provider preset. Editable for overrides.
@@ -1716,7 +1716,7 @@ Update the following for edge case handling:
 3. **`src/content/overlay.ts`**: Add error state rendering:
    - When the LLM is unavailable and no API key is set: "Set up an API key in extension settings for translations."
    - When the LLM returns an error: "Translation unavailable -- using local pinyin only."
-   - These appear in the `.dc-translation` area with the `.dc-loading` class replaced by a muted error message.
+   - These appear in the `.hg-translation` area with the `.hg-loading` class replaced by a muted error message.
 
 4. **`src/content/content.ts`**: Add `AbortController` logic to cancel in-flight LLM requests when a new selection is made.
 
@@ -1994,7 +1994,7 @@ The `dist/` folder should be generated without errors.
 ### 5. Package for distribution
 
 ```bash
-cd dist && zip -r ../du-chinese-extension.zip . && cd ..
+cd dist && zip -r ../hanziglow-extension.zip . && cd ..
 ```
 
-The resulting `du-chinese-extension.zip` is ready for Chrome Web Store upload. See SPEC.md Section 10 for the full publishing checklist.
+The resulting `hanziglow-extension.zip` is ready for Chrome Web Store upload. See SPEC.md Section 10 for the full publishing checklist.

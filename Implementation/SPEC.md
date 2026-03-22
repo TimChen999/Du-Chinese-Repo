@@ -1,6 +1,6 @@
-# Du Chinese Chrome Extension — Specification
+# HanziGlow Chrome Extension — Specification
 
-A Chrome extension inspired by the Du Chinese app that lets users select Chinese text on **any webpage** and instantly see pinyin annotations, word-level definitions, and full sentence translations. Unlike Du Chinese (locked to curated readings), this operates freely across all browser tabs — news articles, social media, documentation, emails, etc. Complex tasks like word segmentation, polyphonic character disambiguation, and contextual translation are handled by LLM integration.
+A Chrome extension inspired by Chinese reading apps like Du Chinese that lets users select Chinese text on **any webpage** and instantly see pinyin annotations, word-level definitions, and full sentence translations. Unlike app-based readers (locked to curated readings), HanziGlow operates freely across all browser tabs — news articles, social media, documentation, emails, etc. Complex tasks like word segmentation, polyphonic character disambiguation, and contextual translation are handled by LLM integration.
 
 ---
 
@@ -31,9 +31,9 @@ The extension adds a Chinese reading assistant to every webpage. When a user sel
 - A full English translation of the selected passage is shown
 - An LLM handles the hard parts: word segmentation, polyphonic disambiguation, and natural translation
 
-### How It Differs from Du Chinese
+### How It Differs from App-Based Readers
 
-| Aspect | Du Chinese App | This Extension |
+| Aspect | App-Based Readers (e.g. Du Chinese) | HanziGlow |
 |---|---|---|
 | Content source | Curated graded readings | Any webpage in the browser |
 | Platform | Mobile app (iOS/Android) | Chrome browser extension |
@@ -227,7 +227,7 @@ Alternative triggers beyond text selection:
 ```json
 {
   "manifest_version": 3,
-  "name": "Du Chinese — Pinyin & Translation Assistant",
+  "name": "HanziGlow — Pinyin & Translation Assistant",
   "version": "1.0.0",
   "description": "Select Chinese text on any webpage to see pinyin, definitions, and translations.",
   "permissions": [
@@ -593,13 +593,13 @@ The overlay is the primary UI element. It is a floating panel that appears near 
 **Ruby annotation HTML structure:**
 
 ```html
-<div class="dc-pinyin-row">
+<div class="hg-pinyin-row">
   <ruby>他<rt>tā</rt></ruby>
   <ruby>在<rt>zài</rt></ruby>
   <ruby>银行<rt>yín háng</rt></ruby>
   <ruby>工作<rt>gōng zuò</rt></ruby>
 </div>
-<div class="dc-translation">
+<div class="hg-translation">
   He works at a bank.
 </div>
 ```
@@ -648,7 +648,7 @@ The popup opens when clicking the extension icon in the toolbar.
 **Layout:**
 ```
 ┌─────────────────────────────────┐
-│  Du Chinese Extension           │
+│  HanziGlow Extension            │
 │  ─────────────────────────────  │
 │                                 │
 │  LLM Provider                   │
@@ -703,7 +703,7 @@ When the user selects a provider from the dropdown, the API Key, Base URL, and M
 ## 8. File and Folder Structure
 
 ```
-du-chinese-extension/
+hanziglow-extension/
 ├── manifest.json                    # Chrome extension manifest (Manifest V3)
 ├── package.json                     # npm dependencies and scripts
 ├── tsconfig.json                    # TypeScript configuration
@@ -757,8 +757,8 @@ du-chinese-extension/
 #### Step 1.1 — Initialize the Project
 
 ```bash
-mkdir du-chinese-extension
-cd du-chinese-extension
+mkdir hanziglow-extension
+cd hanziglow-extension
 npm init -y
 ```
 
@@ -1048,7 +1048,7 @@ export async function queryLLM(
 
     return parsed;
   } catch (error) {
-    console.error("[Du Chinese] LLM error:", error);
+    console.error("[HanziGlow] LLM error:", error);
     return null;
   } finally {
     clearTimeout(timeout);
@@ -1120,21 +1120,21 @@ This design means adding a new provider in the future only requires adding a pre
 
 Key implementation details:
 
-1. **Create Shadow DOM container**: Inject a `<div id="dc-extension-root">` into the page body. Attach a Shadow DOM to it. All overlay content lives inside the shadow root.
+1. **Create Shadow DOM container**: Inject a `<div id="hg-extension-root">` into the page body. Attach a Shadow DOM to it. All overlay content lives inside the shadow root.
 
 2. **Render ruby annotations**: Convert the `WordData[]` array into `<ruby>` elements:
 
 ```typescript
 function renderRubyText(words: WordData[]): string {
   return words.map(w =>
-    `<ruby class="dc-word" data-chars="${w.chars}">${w.chars}<rt>${w.pinyin}</rt></ruby>`
+    `<ruby class="hg-word" data-chars="${w.chars}">${w.chars}<rt>${w.pinyin}</rt></ruby>`
   ).join("");
 }
 ```
 
 3. **Position the overlay**: Use the selection's `DOMRect` to place the overlay below (or above) the selected text. Account for scroll position (`window.scrollX`, `window.scrollY`).
 
-4. **Word click handler**: Attach click listeners to `.dc-word` elements. On click, show an expanded definition card with the word's definition (from the LLM response).
+4. **Word click handler**: Attach click listeners to `.hg-word` elements. On click, show an expanded definition card with the word's definition (from the LLM response).
 
 5. **Dismiss logic**: Click outside the shadow root or press Escape to remove the overlay.
 
@@ -1148,7 +1148,7 @@ The CSS lives inside the Shadow DOM, so it's fully isolated. Key styles:
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
-.dc-overlay {
+.hg-overlay {
   position: fixed;
   z-index: 2147483647;
   max-width: 500px;
@@ -1157,24 +1157,24 @@ The CSS lives inside the Shadow DOM, so it's fully isolated. Key styles:
   padding: 16px;
   border-radius: 8px;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
-  animation: dc-fade-in 150ms ease-out;
+  animation: hg-fade-in 150ms ease-out;
 }
 
 /* Light theme */
-.dc-overlay.dc-light {
+.hg-overlay.hg-light {
   background: rgba(255, 255, 255, 0.95);
   color: #1a1a1a;
   backdrop-filter: blur(8px);
 }
 
 /* Dark theme */
-.dc-overlay.dc-dark {
+.hg-overlay.hg-dark {
   background: rgba(31, 41, 55, 0.95);
   color: #f3f4f6;
   backdrop-filter: blur(8px);
 }
 
-.dc-pinyin-row {
+.hg-pinyin-row {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
@@ -1199,7 +1199,7 @@ rt {
   font-weight: normal;
 }
 
-.dc-translation {
+.hg-translation {
   padding-top: 12px;
   border-top: 1px solid rgba(0, 0, 0, 0.1);
   font-size: 14px;
@@ -1207,7 +1207,7 @@ rt {
   color: #374151;
 }
 
-.dc-definition-card {
+.hg-definition-card {
   margin-top: 8px;
   padding: 8px 12px;
   border-radius: 6px;
@@ -1216,7 +1216,7 @@ rt {
   font-size: 14px;
 }
 
-.dc-close-btn {
+.hg-close-btn {
   position: absolute;
   top: 8px;
   right: 8px;
@@ -1229,17 +1229,17 @@ rt {
   border-radius: 4px;
 }
 
-.dc-close-btn:hover {
+.hg-close-btn:hover {
   background: rgba(0, 0, 0, 0.05);
   color: #374151;
 }
 
-.dc-loading {
+.hg-loading {
   color: #9ca3af;
   font-style: italic;
 }
 
-@keyframes dc-fade-in {
+@keyframes hg-fade-in {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
 }
@@ -1401,7 +1401,7 @@ This generates a production-optimized `dist/` folder.
 
 ```bash
 cd dist
-zip -r ../du-chinese-extension.zip .
+zip -r ../hanziglow-extension.zip .
 ```
 
 #### Step 12.3 — Chrome Web Store Developer Account
@@ -1413,7 +1413,7 @@ zip -r ../du-chinese-extension.zip .
 #### Step 12.4 — Prepare Store Listing
 
 Prepare the following assets:
-- **Extension name**: "Du Chinese — Pinyin & Translation Assistant"
+- **Extension name**: "HanziGlow — Pinyin & Translation Assistant"
 - **Short description** (132 chars max): "Select Chinese text on any webpage to instantly see pinyin, definitions, and translations powered by AI."
 - **Detailed description**: Feature overview, usage instructions, privacy note about API keys
 - **Screenshots**: At least 1280x800 screenshots showing the overlay in action
