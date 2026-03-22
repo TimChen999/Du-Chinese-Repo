@@ -1,0 +1,236 @@
+/*
+ * Popup settings panel -- fixed 320px width, clean form layout.
+ * Dark mode via @media (prefers-color-scheme: dark).
+ * SPEC.md Section 2.5, IMPLEMENTATION_GUIDE.md Step 8c.
+ */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  width: 320px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  padding: 16px;
+  background: #ffffff;
+  color: #1a1a1a;
+}
+
+h1 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.form-group {
+  margin-bottom: 12px;
+}
+
+label {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 4px;
+  color: #374151;
+}
+
+input[type="text"],
+input[type="password"],
+select {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 13px;
+  background: #ffffff;
+  color: #1a1a1a;
+  outline: none;
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus,
+select:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+.input-row {
+  display: flex;
+  gap: 4px;
+}
+
+.input-row input {
+  flex: 1;
+}
+
+.input-row button {
+  padding: 4px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #f9fafb;
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+  color: #374151;
+}
+
+.input-row button:hover {
+  background: #f3f4f6;
+}
+
+input[type="range"] {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.radio-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: normal;
+  cursor: pointer;
+}
+
+.radio-label input[type="radio"] {
+  margin: 0;
+}
+
+.example {
+  color: #6b7280;
+  font-style: italic;
+  margin-left: 4px;
+}
+
+.checkbox-group {
+  margin-top: 4px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: normal;
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+  margin: 0;
+}
+
+.hidden {
+  display: none !important;
+}
+
+#save-btn {
+  width: 100%;
+  padding: 8px;
+  margin-top: 8px;
+  border: none;
+  border-radius: 4px;
+  background: #3b82f6;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+#save-btn:hover {
+  background: #2563eb;
+}
+
+#status {
+  margin-top: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  text-align: center;
+}
+
+#status:empty {
+  display: none;
+}
+
+#status.success {
+  background: #dcfce7;
+  color: #166534;
+}
+
+#status.error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+/* ─── Dark mode ──────────────────────────────────────────────── */
+
+@media (prefers-color-scheme: dark) {
+  body {
+    background: #1f2937;
+    color: #f3f4f6;
+  }
+
+  h1 {
+    border-bottom-color: #374151;
+  }
+
+  label {
+    color: #d1d5db;
+  }
+
+  input[type="text"],
+  input[type="password"],
+  select {
+    background: #374151;
+    color: #f3f4f6;
+    border-color: #4b5563;
+  }
+
+  input[type="text"]:focus,
+  input[type="password"]:focus,
+  select:focus {
+    border-color: #60a5fa;
+    box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.2);
+  }
+
+  .input-row button {
+    background: #374151;
+    border-color: #4b5563;
+    color: #d1d5db;
+  }
+
+  .input-row button:hover {
+    background: #4b5563;
+  }
+
+  .example {
+    color: #9ca3af;
+  }
+
+  #save-btn {
+    background: #2563eb;
+  }
+
+  #save-btn:hover {
+    background: #3b82f6;
+  }
+
+  #status.success {
+    background: #064e3b;
+    color: #6ee7b7;
+  }
+
+  #status.error {
+    background: #7f1d1d;
+    color: #fca5a5;
+  }
+}

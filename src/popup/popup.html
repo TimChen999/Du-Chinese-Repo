@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=320" />
+  <title>HanziGlow Settings</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <h1>HanziGlow Extension</h1>
+
+  <!-- LLM Provider -->
+  <div class="form-group">
+    <label for="provider">LLM Provider</label>
+    <select id="provider">
+      <option value="openai">OpenAI</option>
+      <option value="gemini">Google Gemini</option>
+      <option value="ollama">Ollama (local)</option>
+      <option value="custom">Custom</option>
+    </select>
+  </div>
+
+  <!-- API Key -->
+  <div class="form-group" id="api-key-group">
+    <label for="api-key">API Key</label>
+    <div class="input-row">
+      <input type="password" id="api-key" placeholder="Enter API key" />
+      <button type="button" id="toggle-key" title="Show/hide API key">Show</button>
+    </div>
+  </div>
+
+  <!-- Base URL -->
+  <div class="form-group">
+    <label for="base-url">API Base URL</label>
+    <input type="text" id="base-url" placeholder="https://api.openai.com/v1" />
+  </div>
+
+  <!-- Model -->
+  <div class="form-group">
+    <label for="model">Model</label>
+    <select id="model"></select>
+    <input type="text" id="custom-model" placeholder="Enter model name" class="hidden" />
+  </div>
+
+  <!-- Pinyin Style -->
+  <div class="form-group">
+    <label>Pinyin Style</label>
+    <div class="radio-group">
+      <label class="radio-label">
+        <input type="radio" name="pinyin-style" value="toneMarks" />
+        Tone marks <span class="example">hàn yǔ</span>
+      </label>
+      <label class="radio-label">
+        <input type="radio" name="pinyin-style" value="toneNumbers" />
+        Tone numbers <span class="example">han4 yu3</span>
+      </label>
+      <label class="radio-label">
+        <input type="radio" name="pinyin-style" value="none" />
+        No tones <span class="example">han yu</span>
+      </label>
+    </div>
+  </div>
+
+  <!-- Font Size -->
+  <div class="form-group">
+    <label for="font-size">Font Size: <span id="font-size-label">16</span>px</label>
+    <input type="range" id="font-size" min="12" max="24" step="1" />
+  </div>
+
+  <!-- Theme -->
+  <div class="form-group">
+    <label for="theme">Theme</label>
+    <select id="theme">
+      <option value="auto">Auto</option>
+      <option value="light">Light</option>
+      <option value="dark">Dark</option>
+    </select>
+  </div>
+
+  <!-- LLM Mode -->
+  <div class="form-group checkbox-group">
+    <label class="checkbox-label">
+      <input type="checkbox" id="llm-enabled" />
+      Enable LLM-enhanced translations
+    </label>
+  </div>
+
+  <button id="save-btn">Save Settings</button>
+  <div id="status"></div>
+
+  <script type="module" src="popup.ts"></script>
+</body>
+</html>

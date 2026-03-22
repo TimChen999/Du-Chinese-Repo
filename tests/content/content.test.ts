@@ -21,12 +21,14 @@ import { MAX_SELECTION_LENGTH, DEBOUNCE_MS } from "../../src/shared/constants";
 const mockShowOverlay = vi.fn();
 const mockUpdateOverlay = vi.fn();
 const mockShowOverlayError = vi.fn();
+const mockShowTruncationNotice = vi.fn();
 const mockDismissOverlay = vi.fn();
 
 vi.mock("../../src/content/overlay", () => ({
   showOverlay: mockShowOverlay,
   updateOverlay: mockUpdateOverlay,
   showOverlayError: mockShowOverlayError,
+  showTruncationNotice: mockShowTruncationNotice,
   dismissOverlay: mockDismissOverlay,
 }));
 
@@ -109,6 +111,7 @@ describe("content script", () => {
     mockShowOverlay.mockClear();
     mockUpdateOverlay.mockClear();
     mockShowOverlayError.mockClear();
+    mockShowTruncationNotice.mockClear();
     mockDismissOverlay.mockClear();
 
     chrome.runtime.sendMessage.mockImplementation(
@@ -244,7 +247,7 @@ describe("content script", () => {
       );
 
       expect(mockShowOverlayError).toHaveBeenCalledWith(
-        "Translation unavailable \u2014 using local pinyin only.",
+        "LLM request failed",
       );
     });
   });

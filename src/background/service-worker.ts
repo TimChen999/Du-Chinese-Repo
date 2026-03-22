@@ -102,7 +102,14 @@ async function handleLLMPath(
   if (!settings.llmEnabled || !tabId) return;
 
   const preset = PROVIDER_PRESETS[settings.provider];
-  if (preset.requiresApiKey && !settings.apiKey) return;
+  if (preset.requiresApiKey && !settings.apiKey) {
+    chrome.tabs.sendMessage(tabId, {
+      type: "PINYIN_ERROR",
+      error: "Set up an API key in extension settings for translations.",
+      phase: "llm",
+    });
+    return;
+  }
 
   // Cache lookup keyed on text+context so identical selections in
   // different paragraphs get separate, contextually correct entries.

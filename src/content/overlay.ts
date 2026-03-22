@@ -144,6 +144,25 @@ export function showOverlayError(message: string): void {
 }
 
 /**
+ * Appends a muted notice to the overlay when the user's selection
+ * exceeded MAX_SELECTION_LENGTH and was truncated before processing.
+ * (SPEC.md Section 10.2, IMPLEMENTATION_GUIDE.md Step 8d)
+ */
+export function showTruncationNotice(): void {
+  if (!shadowRoot) return;
+  const overlay = shadowRoot.querySelector(".hg-overlay");
+  if (!overlay) return;
+
+  const existing = overlay.querySelector(".hg-truncation-notice");
+  if (existing) return;
+
+  const notice = document.createElement("div");
+  notice.className = "hg-truncation-notice";
+  notice.textContent = "Showing results for the first 500 characters.";
+  overlay.appendChild(notice);
+}
+
+/**
  * Removes the overlay host element from the DOM entirely.
  * Called on click-outside, Escape, or new selection.
  */

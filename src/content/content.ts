@@ -26,6 +26,7 @@ import {
   showOverlay,
   updateOverlay,
   showOverlayError,
+  showTruncationNotice,
   dismissOverlay,
 } from "./overlay";
 
@@ -72,10 +73,10 @@ function debounce<T extends (...args: unknown[]) => void>(
 function processSelection(text: string, rect: DOMRect, context: string): void {
   if (!containsChinese(text)) return;
 
-  const truncated =
-    text.length > MAX_SELECTION_LENGTH
-      ? text.slice(0, MAX_SELECTION_LENGTH)
-      : text;
+  const wasTruncated = text.length > MAX_SELECTION_LENGTH;
+  const truncated = wasTruncated
+    ? text.slice(0, MAX_SELECTION_LENGTH)
+    : text;
 
   const requestId = ++currentRequestId;
 
@@ -97,6 +98,7 @@ function processSelection(text: string, rect: DOMRect, context: string): void {
       if (requestId !== currentRequestId) return;
       if (!response || response.type !== "PINYIN_RESPONSE_LOCAL") return;
       showOverlay(response.words, rect, cachedTheme);
+      if (wasTruncated) showTruncationNotice();
     },
   );
 }
@@ -147,9 +149,7 @@ chrome.runtime.onMessage.addListener(
 
       case "PINYIN_ERROR":
         if (message.phase === "llm") {
-          showOverlayError(
-            "Translation unavailable \u2014 using local pinyin only.",
-          );
+          showOverlayError(message.error);
         }
         break;
 
