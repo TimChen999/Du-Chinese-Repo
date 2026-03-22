@@ -1,4 +1,4 @@
-# HanziGlow Chrome Extension -- Implementation Guide
+# Pinyin Tool Chrome Extension -- Implementation Guide
 
 This document breaks the full [SPEC.md](SPEC.md) into **8 discrete implementation steps**, each designed to be completed in a single LLM coding session. Every step includes its own unit tests in a dedicated `tests/` directory. Steps are ordered by dependency -- each step builds only on files produced by prior steps.
 
@@ -152,7 +152,7 @@ Bootstrap the entire project from scratch -- configuration files, build pipeline
 #### 1a. Initialize the project
 
 ```bash
-mkdir hanziglow-extension && cd hanziglow-extension
+mkdir pinyin-tool-extension && cd pinyin-tool-extension
 npm init -y
 ```
 
@@ -1652,7 +1652,7 @@ Build the settings popup UI, implement all polishing touches (mixed text handlin
 
 Build a settings form with:
 
-- Title: "HanziGlow Extension"
+- Title: "Pinyin Tool Extension"
 - **LLM Provider**: `<select id="provider">` with options: OpenAI, Google Gemini, Ollama (local), Custom. When the user selects a provider, JavaScript auto-fills the Base URL and Model fields from `PROVIDER_PRESETS` in `constants.ts`, and shows/hides the API Key field based on `requiresApiKey`.
 - **API Key**: `<input type="password" id="api-key">` with a show/hide toggle button. Hidden when the selected provider is Ollama (since it runs locally without auth).
 - **API Base URL**: `<input type="text" id="base-url">` with placeholder auto-filled from the selected provider preset. Editable for overrides.
@@ -1994,7 +1994,7 @@ The `dist/` folder should be generated without errors.
 ### 5. Package for distribution
 
 ```bash
-cd dist && zip -r ../hanziglow-extension.zip . && cd ..
+cd dist && zip -r ../pinyin-tool-extension.zip . && cd ..
 ```
 
-The resulting `hanziglow-extension.zip` is ready for Chrome Web Store upload. See SPEC.md Section 10 for the full publishing checklist.
+The resulting `pinyin-tool-extension.zip` is ready for Chrome Web Store upload. See SPEC.md Section 10 for the full publishing checklist.

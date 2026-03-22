@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "HanziGlow — Pinyin & Translation Assistant",
+  "name": "Pinyin Tool — Pinyin & Translation Assistant",
   "version": "1.0.0",
   "description": "Select Chinese text on any webpage to see pinyin, definitions, and translations.",
   "permissions": [

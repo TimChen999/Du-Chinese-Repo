@@ -1,6 +1,6 @@
-# HanziGlow Chrome Extension — Specification
+# Pinyin Tool Chrome Extension — Specification
 
-A Chrome extension inspired by Chinese reading apps like Du Chinese that lets users select Chinese text on **any webpage** and instantly see pinyin annotations, word-level definitions, and full sentence translations. Unlike app-based readers (locked to curated readings), HanziGlow operates freely across all browser tabs — news articles, social media, documentation, emails, etc. Complex tasks like word segmentation, polyphonic character disambiguation, and contextual translation are handled by LLM integration.
+A Chrome extension inspired by Chinese reading apps like Du Chinese that lets users select Chinese text on **any webpage** and instantly see pinyin annotations, word-level definitions, and full sentence translations. Unlike app-based readers (locked to curated readings), Pinyin Tool operates freely across all browser tabs — news articles, social media, documentation, emails, etc. Complex tasks like word segmentation, polyphonic character disambiguation, and contextual translation are handled by LLM integration.
 
 ---
 
@@ -33,7 +33,7 @@ The extension adds a Chinese reading assistant to every webpage. When a user sel
 
 ### How It Differs from App-Based Readers
 
-| Aspect | App-Based Readers (e.g. Du Chinese) | HanziGlow |
+| Aspect | App-Based Readers (e.g. Du Chinese) | Pinyin Tool |
 |---|---|---|
 | Content source | Curated graded readings | Any webpage in the browser |
 | Platform | Mobile app (iOS/Android) | Chrome browser extension |
@@ -227,7 +227,7 @@ Alternative triggers beyond text selection:
 ```json
 {
   "manifest_version": 3,
-  "name": "HanziGlow — Pinyin & Translation Assistant",
+  "name": "Pinyin Tool — Pinyin & Translation Assistant",
   "version": "1.0.0",
   "description": "Select Chinese text on any webpage to see pinyin, definitions, and translations.",
   "permissions": [
@@ -648,7 +648,7 @@ The popup opens when clicking the extension icon in the toolbar.
 **Layout:**
 ```
 ┌─────────────────────────────────┐
-│  HanziGlow Extension            │
+│  Pinyin Tool Extension            │
 │  ─────────────────────────────  │
 │                                 │
 │  LLM Provider                   │
@@ -703,7 +703,7 @@ When the user selects a provider from the dropdown, the API Key, Base URL, and M
 ## 8. File and Folder Structure
 
 ```
-hanziglow-extension/
+pinyin-tool-extension/
 ├── manifest.json                    # Chrome extension manifest (Manifest V3)
 ├── package.json                     # npm dependencies and scripts
 ├── tsconfig.json                    # TypeScript configuration
@@ -757,8 +757,8 @@ hanziglow-extension/
 #### Step 1.1 — Initialize the Project
 
 ```bash
-mkdir hanziglow-extension
-cd hanziglow-extension
+mkdir pinyin-tool-extension
+cd pinyin-tool-extension
 npm init -y
 ```
 
@@ -1048,7 +1048,7 @@ export async function queryLLM(
 
     return parsed;
   } catch (error) {
-    console.error("[HanziGlow] LLM error:", error);
+    console.error("[Pinyin Tool] LLM error:", error);
     return null;
   } finally {
     clearTimeout(timeout);
@@ -1401,7 +1401,7 @@ This generates a production-optimized `dist/` folder.
 
 ```bash
 cd dist
-zip -r ../hanziglow-extension.zip .
+zip -r ../pinyin-tool-extension.zip .
 ```
 
 #### Step 12.3 — Chrome Web Store Developer Account
@@ -1413,7 +1413,7 @@ zip -r ../hanziglow-extension.zip .
 #### Step 12.4 — Prepare Store Listing
 
 Prepare the following assets:
-- **Extension name**: "HanziGlow — Pinyin & Translation Assistant"
+- **Extension name**: "Pinyin Tool — Pinyin & Translation Assistant"
 - **Short description** (132 chars max): "Select Chinese text on any webpage to instantly see pinyin, definitions, and translations powered by AI."
 - **Detailed description**: Feature overview, usage instructions, privacy note about API keys
 - **Screenshots**: At least 1280x800 screenshots showing the overlay in action

@@ -1,5 +1,5 @@
 /**
- * Shared TypeScript types for the HanziGlow Chrome extension.
+ * Shared TypeScript types for the Pinyin Tool Chrome extension.
  *
  * Every component (content script, service worker, popup, overlay) imports
  * from this file. The types define the message protocol between content
