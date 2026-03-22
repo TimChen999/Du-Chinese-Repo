@@ -128,6 +128,22 @@ export function updateOverlay(
 }
 
 /**
+ * Replaces the Phase 1 loading indicator with an error message.
+ * The overlay keeps its local pinyin from Phase 1; only the
+ * translation area is affected. Used when the LLM call fails
+ * or the provider isn't configured.
+ * (SPEC.md Section 6 "Fallback Strategy")
+ */
+export function showOverlayError(message: string): void {
+  if (!shadowRoot) return;
+  const el = shadowRoot.querySelector(".hg-translation");
+  if (el) {
+    el.classList.remove("hg-loading");
+    el.textContent = message;
+  }
+}
+
+/**
  * Removes the overlay host element from the DOM entirely.
  * Called on click-outside, Escape, or new selection.
  */

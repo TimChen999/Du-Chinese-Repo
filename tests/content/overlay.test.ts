@@ -1,8 +1,9 @@
 /**
  * Tests for the Shadow DOM overlay component (Step 6).
  *
- * Verifies the six exported functions: createOverlay, showOverlay,
- * updateOverlay, dismissOverlay, renderRubyText, and calculatePosition.
+ * Verifies the seven exported functions: createOverlay, showOverlay,
+ * updateOverlay, showOverlayError, dismissOverlay, renderRubyText,
+ * and calculatePosition.
  * Uses jsdom's limited Shadow DOM support -- queries go through
  * host.shadowRoot rather than document.querySelector.
  *
@@ -15,6 +16,7 @@ import {
   createOverlay,
   showOverlay,
   updateOverlay,
+  showOverlayError,
   dismissOverlay,
   renderRubyText,
   calculatePosition,
@@ -266,6 +268,40 @@ describe("overlay", () => {
           [{ chars: "好", pinyin: "hǎo", definition: "good" }],
           "Good.",
         ),
+      ).not.toThrow();
+    });
+  });
+
+  // ─── showOverlayError ──────────────────────────────────────────
+  describe("showOverlayError", () => {
+    it("replaces loading indicator with an error message", () => {
+      showOverlay(
+        [{ chars: "好", pinyin: "hǎo" }],
+        makeDOMRect(100, 200, 100, 20),
+        "light",
+      );
+
+      showOverlayError("Translation unavailable — using local pinyin only.");
+
+      const host = document.getElementById("hg-extension-root");
+      const shadow = host!.shadowRoot!;
+      expect(shadow.querySelector(".hg-loading")).toBeNull();
+      const translation = shadow.querySelector(".hg-translation");
+      expect(translation!.textContent).toBe(
+        "Translation unavailable — using local pinyin only.",
+      );
+    });
+
+    it("does nothing if overlay has been dismissed", () => {
+      showOverlay(
+        [{ chars: "好", pinyin: "hǎo" }],
+        makeDOMRect(100, 200, 100, 20),
+        "light",
+      );
+      dismissOverlay();
+
+      expect(() =>
+        showOverlayError("Translation unavailable."),
       ).not.toThrow();
     });
   });
