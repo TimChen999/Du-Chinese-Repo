@@ -1,0 +1,151 @@
+/*
+ * Overlay styles -- injected into the Shadow DOM so they never leak
+ * into or conflict with the host page's CSS.
+ *
+ * Theming: .hg-light / .hg-dark on .hg-overlay; "auto" resolved in JS.
+ * Layout:  ruby/rt for pinyin annotations, flex row for word flow.
+ * Spec:    SPEC.md Section 7 "UI/UX Design", Step 7.2 CSS listing.
+ */
+
+:host {
+  all: initial;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.hg-overlay {
+  position: fixed;
+  z-index: 2147483647;
+  max-width: 500px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 16px;
+  border-radius: 8px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+  animation: hg-fade-in 150ms ease-out;
+}
+
+/* ─── Light theme ─────────────────────────────────────────────── */
+.hg-overlay.hg-light {
+  background: rgba(255, 255, 255, 0.95);
+  color: #1a1a1a;
+  backdrop-filter: blur(8px);
+}
+
+.hg-overlay.hg-light rt {
+  color: #6b7280;
+}
+
+.hg-overlay.hg-light .hg-translation {
+  color: #374151;
+  border-top-color: rgba(0, 0, 0, 0.1);
+}
+
+.hg-overlay.hg-light .hg-close-btn {
+  color: #9ca3af;
+}
+
+.hg-overlay.hg-light .hg-close-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: #374151;
+}
+
+/* ─── Dark theme ──────────────────────────────────────────────── */
+.hg-overlay.hg-dark {
+  background: rgba(31, 41, 55, 0.95);
+  color: #f3f4f6;
+  backdrop-filter: blur(8px);
+}
+
+.hg-overlay.hg-dark rt {
+  color: #9ca3af;
+}
+
+.hg-overlay.hg-dark .hg-translation {
+  color: #d1d5db;
+  border-top-color: rgba(255, 255, 255, 0.1);
+}
+
+.hg-overlay.hg-dark .hg-close-btn {
+  color: #6b7280;
+}
+
+.hg-overlay.hg-dark .hg-close-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f3f4f6;
+}
+
+.hg-overlay.hg-dark ruby:hover {
+  background: rgba(96, 165, 250, 0.15);
+}
+
+.hg-overlay.hg-dark .hg-definition-card {
+  background: rgba(96, 165, 250, 0.1);
+}
+
+/* ─── Pinyin row and ruby annotations ─────────────────────────── */
+.hg-pinyin-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+ruby {
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-size: 18px;
+  transition: background-color 150ms;
+}
+
+ruby:hover {
+  background: rgba(59, 130, 246, 0.1);
+}
+
+rt {
+  font-size: 12px;
+  font-weight: normal;
+}
+
+/* ─── Translation area ────────────────────────────────────────── */
+.hg-translation {
+  padding-top: 12px;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ─── Word definition card (expands on click) ─────────────────── */
+.hg-definition-card {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: rgba(59, 130, 246, 0.05);
+  border-left: 3px solid #3b82f6;
+  font-size: 14px;
+}
+
+/* ─── Close button ────────────────────────────────────────────── */
+.hg-close-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 4px;
+  border-radius: 4px;
+}
+
+/* ─── Loading indicator (pulsing dots before LLM response) ───── */
+.hg-loading {
+  color: #9ca3af;
+  font-style: italic;
+}
+
+/* ─── Entrance animation ──────────────────────────────────────── */
+@keyframes hg-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
