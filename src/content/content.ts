@@ -149,7 +149,8 @@ chrome.runtime.onMessage.addListener(
 
       case "PINYIN_ERROR":
         if (message.phase === "llm") {
-          showOverlayError(message.error);
+          // showOverlayError(message.error);
+          showOverlayError("");
         }
         break;
 
