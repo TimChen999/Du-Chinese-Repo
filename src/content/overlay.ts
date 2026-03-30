@@ -23,6 +23,7 @@ import overlayStyles from "./overlay.css?inline";
 // ─── Module state ──────────────────────────────────────────────────
 let shadowRoot: ShadowRoot | null = null;
 let hostElement: HTMLElement | null = null;
+let voicesReady = false;
 
 // ─── Public API ────────────────────────────────────────────────────
 
@@ -62,6 +63,7 @@ export function showOverlay(
   words: WordData[],
   rect: DOMRect,
   theme: Theme,
+  ttsEnabled = false,
 ): void {
   const root = createOverlay();
 
@@ -85,6 +87,7 @@ export function showOverlay(
   pinyinRow.className = "hg-pinyin-row";
   pinyinRow.innerHTML = renderRubyText(words);
   attachWordClickHandlers(pinyinRow, overlay);
+  appendTtsButton(pinyinRow, words, ttsEnabled);
   overlay.appendChild(pinyinRow);
 
   const translation = document.createElement("div");
@@ -108,6 +111,7 @@ export function showOverlay(
 export function updateOverlay(
   words: Required<WordData>[],
   translation: string,
+  ttsEnabled = false,
 ): void {
   if (!shadowRoot) return;
 
@@ -118,6 +122,7 @@ export function updateOverlay(
   if (pinyinRow) {
     pinyinRow.innerHTML = renderRubyText(words);
     attachWordClickHandlers(pinyinRow as HTMLElement, overlay as HTMLElement);
+    appendTtsButton(pinyinRow as HTMLElement, words, ttsEnabled);
   }
 
   const translationEl = overlay.querySelector(".hg-translation");
@@ -218,6 +223,88 @@ export function calculatePosition(
   const left = Math.max(0, Math.min(idealLeft, vpWidth - overlayWidth));
 
   return { top, left };
+}
+
+// ─── TTS helpers ───────────────────────────────────────────────────
+
+function ensureVoicesLoaded(): Promise<void> {
+  return new Promise((resolve) => {
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length > 0) {
+      voicesReady = true;
+      resolve();
+      return;
+    }
+    window.speechSynthesis.addEventListener(
+      "voiceschanged",
+      () => {
+        voicesReady = true;
+        resolve();
+      },
+      { once: true },
+    );
+  });
+}
+
+function hasChineseVoice(): boolean {
+  const voices = window.speechSynthesis.getVoices();
+  return voices.some((v) => v.lang.startsWith("zh"));
+}
+
+function speakText(text: string, btn: HTMLElement): void {
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = "zh-CN";
+  utterance.rate = 0.85;
+  utterance.onstart = () => btn.classList.add("hg-tts-speaking");
+  utterance.onend = () => btn.classList.remove("hg-tts-speaking");
+  utterance.onerror = () => btn.classList.remove("hg-tts-speaking");
+  window.speechSynthesis.speak(utterance);
+}
+
+/**
+ * Creates a TTS button and appends it to the pinyin row.
+ * Skips rendering when TTS is disabled or no Chinese voice is available.
+ */
+function appendTtsButton(
+  pinyinRow: Element,
+  words: WordData[],
+  ttsEnabled: boolean,
+): void {
+  if (!ttsEnabled) return;
+
+  if (!voicesReady) {
+    ensureVoicesLoaded().then(() => {
+      if (hasChineseVoice()) {
+        appendTtsBtnElement(pinyinRow, words);
+      }
+    });
+    return;
+  }
+
+  if (!hasChineseVoice()) return;
+  appendTtsBtnElement(pinyinRow, words);
+}
+
+function appendTtsBtnElement(pinyinRow: Element, words: WordData[]): void {
+  const existing = pinyinRow.querySelector(".hg-tts-btn");
+  if (existing) existing.remove();
+
+  const btn = document.createElement("button");
+  btn.className = "hg-tts-btn";
+  btn.title = "Play pronunciation";
+  btn.setAttribute("aria-label", "Play pronunciation");
+  btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+     fill="none" stroke="currentColor" stroke-width="2"
+     stroke-linecap="round" stroke-linejoin="round">
+  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+  <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+</svg>`;
+  btn.setAttribute("data-text", words.map((w) => w.chars).join(""));
+  btn.addEventListener("click", () => {
+    speakText(btn.getAttribute("data-text") ?? "", btn);
+  });
+  pinyinRow.appendChild(btn);
 }
 
 // ─── Internal helpers ──────────────────────────────────────────────

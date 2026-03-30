@@ -39,6 +39,9 @@ let currentRequestId = 0;
 /** Cached theme setting so each overlay doesn't need a storage read. */
 let cachedTheme: Theme = "auto";
 
+/** Cached TTS toggle so each overlay doesn't need a storage read. */
+let cachedTtsEnabled = true;
+
 /** Viewport rect from the most recent OCR area selection, awaiting capture result. */
 let pendingOCRRect: { x: number; y: number; width: number; height: number } | null = null;
 
@@ -101,7 +104,7 @@ function processSelection(text: string, rect: DOMRect, context: string): void {
     (response: PinyinResponseLocal) => {
       if (requestId !== currentRequestId) return;
       if (!response || response.type !== "PINYIN_RESPONSE_LOCAL") return;
-      showOverlay(response.words, rect, cachedTheme);
+      showOverlay(response.words, rect, cachedTheme, cachedTtsEnabled);
       if (wasTruncated) showTruncationNotice();
     },
   );
@@ -148,7 +151,7 @@ chrome.runtime.onMessage.addListener(
   (message: ExtensionMessage) => {
     switch (message.type) {
       case "PINYIN_RESPONSE_LLM":
-        updateOverlay(message.words, message.translation);
+        updateOverlay(message.words, message.translation, cachedTtsEnabled);
         break;
 
       case "PINYIN_ERROR":
@@ -345,12 +348,17 @@ document.addEventListener("keydown", (e: KeyboardEvent) => {
  * chrome.storage.onChanged, so each overlay render doesn't
  * need an async storage read.
  */
-chrome.storage.sync.get("theme", (result) => {
+chrome.storage.sync.get(["theme", "ttsEnabled"], (result) => {
   if (result.theme) cachedTheme = result.theme as Theme;
+  if (result.ttsEnabled !== undefined) cachedTtsEnabled = result.ttsEnabled as boolean;
 });
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName === "sync" && changes.theme?.newValue) {
+  if (areaName !== "sync") return;
+  if (changes.theme?.newValue) {
     cachedTheme = changes.theme.newValue as Theme;
+  }
+  if (changes.ttsEnabled?.newValue !== undefined) {
+    cachedTtsEnabled = changes.ttsEnabled.newValue as boolean;
   }
 });

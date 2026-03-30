@@ -76,6 +76,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   fontSize: 16,
   theme: "auto",
   llmEnabled: true,
+  ttsEnabled: true,
 };
 
 // ─── Cache Configuration ───────────────────────────────────────────

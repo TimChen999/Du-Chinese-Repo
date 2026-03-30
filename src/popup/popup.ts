@@ -36,6 +36,7 @@ function getElements() {
     fontSizeLabel: document.getElementById("font-size-label") as HTMLSpanElement,
     theme: document.getElementById("theme") as HTMLSelectElement,
     llmEnabled: document.getElementById("llm-enabled") as HTMLInputElement,
+    ttsEnabled: document.getElementById("tts-enabled") as HTMLInputElement,
     saveBtn: document.getElementById("save-btn") as HTMLButtonElement,
     status: document.getElementById("status") as HTMLDivElement,
     tabButtons: document.querySelectorAll<HTMLButtonElement>(".tab-btn"),
@@ -231,6 +232,7 @@ function readFormValues(els: ReturnType<typeof getElements>): ExtensionSettings 
     fontSize: parseInt(els.fontSize.value, 10),
     theme: els.theme.value as ExtensionSettings["theme"],
     llmEnabled: els.llmEnabled.checked,
+    ttsEnabled: els.ttsEnabled.checked,
   };
 }
 
@@ -298,6 +300,7 @@ export async function initPopup(): Promise<void> {
   els.fontSizeLabel.textContent = String(settings.fontSize);
   els.theme.value = settings.theme;
   els.llmEnabled.checked = settings.llmEnabled;
+  els.ttsEnabled.checked = settings.ttsEnabled;
 
   els.pinyinRadios.forEach((r) => {
     r.checked = r.value === settings.pinyinStyle;

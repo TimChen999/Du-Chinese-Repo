@@ -147,6 +147,7 @@ export interface ExtensionSettings {
   fontSize: number;
   theme: Theme;
   llmEnabled: boolean;
+  ttsEnabled: boolean;
 }
 
 /**
