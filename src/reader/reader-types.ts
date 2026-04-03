@@ -39,6 +39,8 @@ export interface FormatRenderer {
   prev(): Promise<boolean>;
   getCurrentLocation(): string;
   getVisibleText(): string;
+  getSpineIndex(href: string): number;
+  onRelocated(callback: (spineIndex: number) => void): void;
   destroy(): void;
 }
 

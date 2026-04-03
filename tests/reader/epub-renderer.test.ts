@@ -343,6 +343,62 @@ describe("EpubRenderer", () => {
       expect(renderer.getRendition()).not.toBeNull();
     });
   });
+
+  describe("getSpineIndex()", () => {
+    it("returns the correct index for a known href", async () => {
+      const file = createMockFile("test.epub");
+      await renderer.load(file);
+      expect(renderer.getSpineIndex("ch2.xhtml")).toBe(1);
+    });
+
+    it("strips fragment before matching", async () => {
+      const file = createMockFile("test.epub");
+      await renderer.load(file);
+      expect(renderer.getSpineIndex("ch1.xhtml#s1")).toBe(0);
+    });
+
+    it("returns -1 for unknown href", async () => {
+      const file = createMockFile("test.epub");
+      await renderer.load(file);
+      expect(renderer.getSpineIndex("nonexistent.xhtml")).toBe(-1);
+    });
+
+    it("returns -1 when no book is loaded", () => {
+      expect(renderer.getSpineIndex("ch1.xhtml")).toBe(-1);
+    });
+  });
+
+  describe("onRelocated()", () => {
+    it("fires callback with spine index on relocated event", async () => {
+      const { rendition } = await loadAndRender();
+      const callback = vi.fn();
+      renderer.onRelocated(callback);
+
+      const relocatedHandler = rendition.on.mock.calls.find(
+        (call: any[]) => call[0] === "relocated",
+      );
+      expect(relocatedHandler).toBeDefined();
+
+      relocatedHandler![1]({ start: { index: 2 } });
+      expect(callback).toHaveBeenCalledWith(2);
+    });
+
+    it("does not fire callback when index is missing", async () => {
+      const { rendition } = await loadAndRender();
+      const callback = vi.fn();
+      renderer.onRelocated(callback);
+
+      const relocatedHandler = rendition.on.mock.calls.find(
+        (call: any[]) => call[0] === "relocated",
+      );
+      relocatedHandler![1]({ start: {} });
+      expect(callback).not.toHaveBeenCalled();
+    });
+
+    it("does nothing when rendition is not initialized", () => {
+      expect(() => renderer.onRelocated(() => {})).not.toThrow();
+    });
+  });
 });
 
 // ─── Helpers ───────────────────────────────────────────────────────

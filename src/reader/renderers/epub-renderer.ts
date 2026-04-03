@@ -100,6 +100,28 @@ export class EpubRenderer implements FormatRenderer {
     return this.rendition;
   }
 
+  getSpineIndex(href: string): number {
+    if (!this.book) return -1;
+    const baseHref = href.split("#")[0];
+    let found = -1;
+    this.book.spine.each((item: any, index: number) => {
+      if (found === -1 && (item.href === baseHref || item.href === href)) {
+        found = index;
+      }
+    });
+    return found;
+  }
+
+  onRelocated(callback: (spineIndex: number) => void): void {
+    if (!this.rendition) return;
+    this.rendition.on("relocated", (location: any) => {
+      const index = location?.start?.index;
+      if (typeof index === "number") {
+        callback(index);
+      }
+    });
+  }
+
   private async extractCoverUrl(): Promise<string | undefined> {
     if (!this.book) return undefined;
     try {

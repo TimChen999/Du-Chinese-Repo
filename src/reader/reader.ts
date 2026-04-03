@@ -187,12 +187,13 @@ function updateProgress(
   els: ReturnType<typeof getElements>,
   metadata: BookMetadata,
 ): void {
+  const chapter = Math.max(0, Math.min(metadata.currentChapter, metadata.totalChapters - 1));
   const pct =
     metadata.totalChapters > 0
-      ? ((metadata.currentChapter + 1) / metadata.totalChapters) * 100
+      ? ((chapter + 1) / metadata.totalChapters) * 100
       : 0;
   els.progressBar.style.width = `${pct}%`;
-  els.chapterIndicator.textContent = `Chapter ${metadata.currentChapter + 1} of ${metadata.totalChapters}`;
+  els.chapterIndicator.textContent = `Chapter ${chapter + 1} of ${metadata.totalChapters}`;
 }
 
 // ─── Recent files rendering ────────────────────────────────────────
@@ -332,6 +333,10 @@ async function openFile(file: File, els: ReturnType<typeof getElements>): Promis
   els.tocList.innerHTML = "";
   renderToc(els.tocList, metadata.toc, async (href) => {
     await renderer.goTo(href);
+    const spineIdx = renderer.getSpineIndex(href);
+    if (spineIdx >= 0) {
+      metadata.currentChapter = spineIdx;
+    }
     updateProgress(els, metadata);
     persistCurrentState();
   });
@@ -342,6 +347,13 @@ async function openFile(file: File, els: ReturnType<typeof getElements>): Promis
 
   await renderer.renderTo(els.readerContent);
   attachSelectionHandler(renderer);
+
+  renderer.onRelocated((spineIndex) => {
+    if (metadata) {
+      metadata.currentChapter = spineIndex;
+      updateProgress(els, metadata);
+    }
+  });
 
   const savedState = await loadReadingState(currentFileHash);
   if (savedState?.location) {
