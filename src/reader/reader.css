@@ -101,7 +101,7 @@ body { background: var(--bg); color: var(--text); }
 }
 
 .reader-content {
-  width: 100%; max-width: 720px; padding: 24px 32px;
+  width: 100%; max-width: clamp(480px, 75%, 900px); padding: 24px 32px;
   flex: 1; min-height: 0;
 }
 
