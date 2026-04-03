@@ -280,6 +280,8 @@ function attachSelectionHandler(renderer: FormatRenderer): void {
   if (!rendition) return;
 
   rendition.on("selected", (_cfiRange: string, contents: any) => {
+    if (!readerSettings.pinyinEnabled) return;
+
     const selection = contents.window.getSelection();
     if (!selection || selection.isCollapsed) return;
 
@@ -346,6 +348,7 @@ async function openFile(file: File, els: ReturnType<typeof getElements>): Promis
   els.readerFooter.classList.remove("hidden");
 
   await renderer.renderTo(els.readerContent);
+  renderer.applySettings(readerSettings);
   attachSelectionHandler(renderer);
 
   renderer.onRelocated((spineIndex) => {
@@ -433,6 +436,16 @@ function readSettingsFromPanel(
   };
 }
 
+// ─── Live settings application ─────────────────────────────────────
+
+function applyCurrentSettings(els: ReturnType<typeof getElements>): void {
+  readerSettings = readSettingsFromPanel(els);
+  applyTheme(readerSettings.theme);
+  if (currentRenderer) {
+    currentRenderer.applySettings(readerSettings);
+  }
+}
+
 // ─── Helpers ───────────────────────────────────────────────────────
 
 function escapeHtml(str: string): string {
@@ -515,18 +528,38 @@ export async function initReader(): Promise<void> {
   });
 
   els.settingsClose.addEventListener("click", async () => {
-    els.settingsPanel.classList.add("hidden");
+    const prevMode = readerSettings.readingMode;
     readerSettings = readSettingsFromPanel(els);
     applyTheme(readerSettings.theme);
+
+    if (
+      currentRenderer instanceof EpubRenderer &&
+      readerSettings.readingMode !== prevMode
+    ) {
+      await currentRenderer.applyReadingMode(readerSettings.readingMode, readerSettings);
+      attachSelectionHandler(currentRenderer);
+    }
+
+    els.settingsPanel.classList.add("hidden");
     await saveReaderSettings(readerSettings);
   });
 
   els.fontSizeSetting.addEventListener("input", () => {
     els.fontSizeValue.textContent = els.fontSizeSetting.value;
+    applyCurrentSettings(els);
+  });
+
+  els.fontFamilySetting.addEventListener("change", () => {
+    applyCurrentSettings(els);
   });
 
   els.lineSpacingSetting.addEventListener("input", () => {
     els.lineSpacingValue.textContent = els.lineSpacingSetting.value;
+    applyCurrentSettings(els);
+  });
+
+  els.themeSetting.addEventListener("change", () => {
+    applyCurrentSettings(els);
   });
 
   // ── Keyboard shortcuts ────────────────────────────────────────

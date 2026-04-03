@@ -41,6 +41,7 @@ export interface FormatRenderer {
   getVisibleText(): string;
   getSpineIndex(href: string): number;
   onRelocated(callback: (spineIndex: number) => void): void;
+  applySettings(settings: ReaderSettings): void;
   destroy(): void;
 }
 

@@ -7,7 +7,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { EpubRenderer } from "../../src/reader/renderers/epub-renderer";
+import { EpubRenderer, FONT_FAMILY_MAP, THEME_COLORS } from "../../src/reader/renderers/epub-renderer";
+import type { ReaderSettings } from "../../src/reader/reader-types";
+import { DEFAULT_READER_SETTINGS } from "../../src/reader/reader-types";
 
 // ─── Shared mock state (module-level so vi.mock and tests share it) ─
 
@@ -71,7 +73,10 @@ function createMockBook(mockRendition: ReturnType<typeof createMockRendition>) {
       }),
     },
     coverUrl: vi.fn().mockResolvedValue("blob:cover-url"),
-    renderTo: vi.fn().mockReturnValue(mockRendition),
+    renderTo: vi.fn().mockImplementation(() => {
+      latestMockRendition = createMockRendition();
+      return latestMockRendition;
+    }),
     destroy: vi.fn(),
   };
 }
@@ -397,6 +402,137 @@ describe("EpubRenderer", () => {
 
     it("does nothing when rendition is not initialized", () => {
       expect(() => renderer.onRelocated(() => {})).not.toThrow();
+    });
+  });
+
+  describe("applySettings()", () => {
+    function makeSettings(overrides: Partial<ReaderSettings> = {}): ReaderSettings {
+      return { ...DEFAULT_READER_SETTINGS, theme: "light", ...overrides };
+    }
+
+    it("overrides font-size on the rendition", async () => {
+      const { rendition } = await loadAndRender();
+      renderer.applySettings(makeSettings({ fontSize: 24 }));
+      expect(rendition.themes.override).toHaveBeenCalledWith("font-size", "24px");
+    });
+
+    it("overrides font-family with mapped CSS value", async () => {
+      const { rendition } = await loadAndRender();
+      renderer.applySettings(makeSettings({ fontFamily: "noto-serif" }));
+      expect(rendition.themes.override).toHaveBeenCalledWith(
+        "font-family",
+        FONT_FAMILY_MAP["noto-serif"],
+      );
+    });
+
+    it("falls back to system font for unknown fontFamily", async () => {
+      const { rendition } = await loadAndRender();
+      renderer.applySettings(makeSettings({ fontFamily: "unknown-font" }));
+      expect(rendition.themes.override).toHaveBeenCalledWith(
+        "font-family",
+        FONT_FAMILY_MAP["system"],
+      );
+    });
+
+    it("overrides line-height on the rendition", async () => {
+      const { rendition } = await loadAndRender();
+      renderer.applySettings(makeSettings({ lineSpacing: 2.0 }));
+      expect(rendition.themes.override).toHaveBeenCalledWith("line-height", "2");
+    });
+
+    it("applies light theme colors", async () => {
+      const { rendition } = await loadAndRender();
+      renderer.applySettings(makeSettings({ theme: "light" }));
+      expect(rendition.themes.override).toHaveBeenCalledWith("color", THEME_COLORS.light.text);
+      expect(rendition.themes.override).toHaveBeenCalledWith("background-color", THEME_COLORS.light.bg);
+    });
+
+    it("applies dark theme colors", async () => {
+      const { rendition } = await loadAndRender();
+      renderer.applySettings(makeSettings({ theme: "dark" }));
+      expect(rendition.themes.override).toHaveBeenCalledWith("color", THEME_COLORS.dark.text);
+      expect(rendition.themes.override).toHaveBeenCalledWith("background-color", THEME_COLORS.dark.bg);
+    });
+
+    it("applies sepia theme colors", async () => {
+      const { rendition } = await loadAndRender();
+      renderer.applySettings(makeSettings({ theme: "sepia" }));
+      expect(rendition.themes.override).toHaveBeenCalledWith("color", THEME_COLORS.sepia.text);
+      expect(rendition.themes.override).toHaveBeenCalledWith("background-color", THEME_COLORS.sepia.bg);
+    });
+
+    it("resolves auto theme via matchMedia", async () => {
+      const { rendition } = await loadAndRender();
+      window.matchMedia = vi.fn().mockReturnValue({ matches: true }) as any;
+      renderer.applySettings(makeSettings({ theme: "auto" }));
+      expect(rendition.themes.override).toHaveBeenCalledWith("color", THEME_COLORS.dark.text);
+      expect(rendition.themes.override).toHaveBeenCalledWith("background-color", THEME_COLORS.dark.bg);
+    });
+
+    it("does not throw when no rendition exists", () => {
+      expect(() => renderer.applySettings(makeSettings())).not.toThrow();
+    });
+  });
+
+  describe("applyReadingMode()", () => {
+    function makeSettings(overrides: Partial<ReaderSettings> = {}): ReaderSettings {
+      return { ...DEFAULT_READER_SETTINGS, theme: "light", ...overrides };
+    }
+
+    it("recreates rendition with paginated flow", async () => {
+      const { book } = await loadAndRender();
+      book.renderTo.mockClear();
+
+      await renderer.applyReadingMode("paginated", makeSettings());
+
+      expect(book.renderTo).toHaveBeenCalledWith(
+        expect.any(HTMLElement),
+        expect.objectContaining({ flow: "paginated" }),
+      );
+    });
+
+    it("does nothing when mode is already the same", async () => {
+      const { book } = await loadAndRender();
+      book.renderTo.mockClear();
+
+      await renderer.applyReadingMode("scroll", makeSettings());
+      expect(book.renderTo).not.toHaveBeenCalled();
+    });
+
+    it("restores saved location after mode change", async () => {
+      await loadAndRender();
+      await renderer.applyReadingMode("paginated", makeSettings());
+
+      const newRendition = latestMockRendition!;
+      expect(newRendition.display).toHaveBeenCalledWith("epubcfi(/6/4)");
+    });
+
+    it("applies settings to the new rendition", async () => {
+      await loadAndRender();
+      const settings = makeSettings({ fontSize: 22, theme: "dark" });
+      await renderer.applyReadingMode("paginated", settings);
+
+      const newRendition = latestMockRendition!;
+      expect(newRendition.themes.override).toHaveBeenCalledWith("font-size", "22px");
+      expect(newRendition.themes.override).toHaveBeenCalledWith("color", THEME_COLORS.dark.text);
+    });
+  });
+
+  describe("FONT_FAMILY_MAP", () => {
+    it("has entries for all supported font keys", () => {
+      expect(FONT_FAMILY_MAP).toHaveProperty("system");
+      expect(FONT_FAMILY_MAP).toHaveProperty("serif");
+      expect(FONT_FAMILY_MAP).toHaveProperty("sans-serif");
+      expect(FONT_FAMILY_MAP).toHaveProperty("noto-sans");
+      expect(FONT_FAMILY_MAP).toHaveProperty("noto-serif");
+    });
+
+    it("includes CJK fallbacks in serif stack", () => {
+      expect(FONT_FAMILY_MAP["serif"]).toContain("Noto Serif CJK SC");
+    });
+
+    it("includes CJK fallbacks in sans-serif stack", () => {
+      expect(FONT_FAMILY_MAP["sans-serif"]).toContain("Noto Sans CJK SC");
     });
   });
 });

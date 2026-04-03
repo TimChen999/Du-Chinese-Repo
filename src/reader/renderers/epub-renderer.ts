@@ -10,7 +10,21 @@
 
 import ePub from "epubjs";
 import type { Book, Rendition, NavItem } from "epubjs";
-import type { FormatRenderer, BookMetadata, TocEntry } from "../reader-types";
+import type { FormatRenderer, BookMetadata, TocEntry, ReaderSettings } from "../reader-types";
+
+export const FONT_FAMILY_MAP: Record<string, string> = {
+  "system": 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif',
+  "serif": 'Georgia, "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", SimSun, serif',
+  "sans-serif": 'system-ui, -apple-system, "Noto Sans CJK SC", "Source Han Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif',
+  "noto-sans": '"Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC", system-ui, sans-serif',
+  "noto-serif": '"Noto Serif SC", "Noto Serif CJK SC", "Source Han Serif SC", Georgia, serif',
+};
+
+export const THEME_COLORS: Record<string, { bg: string; text: string }> = {
+  light: { bg: "#ffffff", text: "#1a1a1a" },
+  dark: { bg: "#1a1a2e", text: "#e2e8f0" },
+  sepia: { bg: "#f4ecd8", text: "#5c4b37" },
+};
 
 export class EpubRenderer implements FormatRenderer {
   readonly formatName = "EPUB";
@@ -18,6 +32,9 @@ export class EpubRenderer implements FormatRenderer {
 
   private book: Book | null = null;
   private rendition: Rendition | null = null;
+  private container: HTMLElement | null = null;
+  private currentFlow: "scrolled-doc" | "paginated" = "scrolled-doc";
+  private relocatedCallback: ((spineIndex: number) => void) | null = null;
 
   async load(file: File): Promise<BookMetadata> {
     const arrayBuffer = await file.arrayBuffer();
@@ -41,13 +58,22 @@ export class EpubRenderer implements FormatRenderer {
   async renderTo(container: HTMLElement): Promise<void> {
     if (!this.book) throw new Error("No book loaded");
 
+    this.container = container;
     this.rendition = this.book.renderTo(container, {
       width: "100%",
       height: "100%",
       spread: "none",
-      flow: "scrolled-doc",
+      flow: this.currentFlow,
       allowScriptedContent: false,
     });
+
+    if (this.relocatedCallback) {
+      const cb = this.relocatedCallback;
+      this.rendition.on("relocated", (location: any) => {
+        const index = location?.start?.index;
+        if (typeof index === "number") cb(index);
+      });
+    }
 
     await this.rendition.display();
   }
@@ -113,6 +139,7 @@ export class EpubRenderer implements FormatRenderer {
   }
 
   onRelocated(callback: (spineIndex: number) => void): void {
+    this.relocatedCallback = callback;
     if (!this.rendition) return;
     this.rendition.on("relocated", (location: any) => {
       const index = location?.start?.index;
@@ -120,6 +147,60 @@ export class EpubRenderer implements FormatRenderer {
         callback(index);
       }
     });
+  }
+
+  applySettings(settings: ReaderSettings): void {
+    if (!this.rendition) return;
+
+    this.rendition.themes.override("font-size", `${settings.fontSize}px`);
+    this.rendition.themes.override(
+      "font-family",
+      FONT_FAMILY_MAP[settings.fontFamily] ?? FONT_FAMILY_MAP["system"],
+    );
+    this.rendition.themes.override("line-height", String(settings.lineSpacing));
+
+    const resolvedTheme =
+      settings.theme === "auto"
+        ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+        : settings.theme;
+    const colors = THEME_COLORS[resolvedTheme] ?? THEME_COLORS["light"];
+    this.rendition.themes.override("color", colors.text);
+    this.rendition.themes.override("background-color", colors.bg);
+  }
+
+  async applyReadingMode(mode: "scroll" | "paginated", settings: ReaderSettings): Promise<void> {
+    const newFlow = mode === "paginated" ? "paginated" : "scrolled-doc";
+    if (newFlow === this.currentFlow || !this.book || !this.container) return;
+
+    const savedLocation = this.getCurrentLocation();
+    this.currentFlow = newFlow;
+
+    this.rendition?.destroy();
+    this.container.innerHTML = "";
+
+    this.rendition = this.book.renderTo(this.container, {
+      width: "100%",
+      height: "100%",
+      spread: "none",
+      flow: this.currentFlow,
+      allowScriptedContent: false,
+    });
+
+    if (this.relocatedCallback) {
+      const cb = this.relocatedCallback;
+      this.rendition.on("relocated", (location: any) => {
+        const index = location?.start?.index;
+        if (typeof index === "number") cb(index);
+      });
+    }
+
+    this.applySettings(settings);
+
+    if (savedLocation) {
+      await this.rendition.display(savedLocation);
+    } else {
+      await this.rendition.display();
+    }
   }
 
   private async extractCoverUrl(): Promise<string | undefined> {

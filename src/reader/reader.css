@@ -52,6 +52,7 @@ body { background: var(--bg); color: var(--text); }
   color: var(--text); transition: background 0.15s;
 }
 .toolbar-btn:hover { background: var(--surface); }
+.toolbar-btn svg { display: block; }
 
 .toolbar-title {
   flex: 1; text-align: center; overflow: hidden;
