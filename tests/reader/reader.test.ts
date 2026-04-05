@@ -14,7 +14,16 @@ import {
   loadReadingState,
   getRecentFiles,
   updateRecentFiles,
+  openRecentFile,
 } from "../../src/reader/reader";
+
+vi.mock("../../src/reader/file-handle-store", () => ({
+  saveFileHandle: vi.fn().mockResolvedValue(undefined),
+  getFileHandle: vi.fn().mockResolvedValue(null),
+  removeFileHandle: vi.fn().mockResolvedValue(undefined),
+}));
+
+import { getFileHandle as mockGetFileHandle } from "../../src/reader/file-handle-store";
 import {
   DEFAULT_READER_SETTINGS,
   MAX_RECENT_FILES,
@@ -293,9 +302,116 @@ describe("reader", () => {
       expect(stored.reader_recent[0].fileHash).toBe("overflow");
     });
   });
+
+  describe("openRecentFile()", () => {
+    const mockEls = createMockElements();
+
+    beforeEach(() => {
+      vi.mocked(mockGetFileHandle).mockReset();
+      vi.spyOn(globalThis, "alert").mockImplementation(() => {});
+    });
+
+    it("shows alert when no handle is stored for the hash", async () => {
+      vi.mocked(mockGetFileHandle).mockResolvedValue(null);
+
+      const entry = createReadingState("missing-handle");
+      await openRecentFile(entry, mockEls as any);
+
+      expect(mockGetFileHandle).toHaveBeenCalledWith("missing-handle");
+      expect(globalThis.alert).toHaveBeenCalledWith(
+        expect.stringContaining("can no longer be opened"),
+      );
+    });
+
+    it("calls getFileHandle with the correct fileHash", async () => {
+      vi.mocked(mockGetFileHandle).mockResolvedValue(null);
+
+      const entry = createReadingState("test-hash");
+      await openRecentFile(entry, mockEls as any);
+
+      expect(mockGetFileHandle).toHaveBeenCalledWith("test-hash");
+    });
+
+    it("requests permission when a handle is found", async () => {
+      const mockHandle = {
+        kind: "file" as const,
+        name: "test.epub",
+        getFile: vi.fn().mockResolvedValue(
+          new File([new Uint8Array(10)], "test.epub", {
+            type: "application/epub+zip",
+            lastModified: 1000000,
+          }),
+        ),
+        requestPermission: vi.fn().mockResolvedValue("denied" as PermissionState),
+      };
+      vi.mocked(mockGetFileHandle).mockResolvedValue(mockHandle as any);
+
+      const entry = createReadingState("perm-test");
+      await openRecentFile(entry, mockEls as any);
+
+      expect(mockHandle.requestPermission).toHaveBeenCalledWith({ mode: "read" });
+    });
+
+    it("shows alert when permission is denied", async () => {
+      const mockHandle = {
+        kind: "file" as const,
+        name: "test.epub",
+        getFile: vi.fn(),
+        requestPermission: vi.fn().mockResolvedValue("denied" as PermissionState),
+      };
+      vi.mocked(mockGetFileHandle).mockResolvedValue(mockHandle as any);
+
+      const entry = createReadingState("denied-hash");
+      await openRecentFile(entry, mockEls as any);
+
+      expect(globalThis.alert).toHaveBeenCalledWith(
+        expect.stringContaining("denied"),
+      );
+      expect(mockHandle.getFile).not.toHaveBeenCalled();
+    });
+
+    it("shows alert when requestPermission throws (file moved/deleted)", async () => {
+      const mockHandle = {
+        kind: "file" as const,
+        name: "test.epub",
+        getFile: vi.fn(),
+        requestPermission: vi.fn().mockRejectedValue(new Error("not found")),
+      };
+      vi.mocked(mockGetFileHandle).mockResolvedValue(mockHandle as any);
+
+      const entry = createReadingState("gone-hash");
+      await openRecentFile(entry, mockEls as any);
+
+      expect(globalThis.alert).toHaveBeenCalledWith(
+        expect.stringContaining("moved or deleted"),
+      );
+    });
+  });
 });
 
 // ─── Helpers ───────────────────────────────────────────────────────
+
+function createMockElements() {
+  const div = () => document.createElement("div");
+  const btn = () => document.createElement("button");
+  const input = () => document.createElement("input");
+  const select = () => document.createElement("select");
+  return {
+    tocToggle: btn(), tocSidebar: div(), tocList: div(),
+    bookTitle: div(), bookAuthor: div(),
+    settingsToggle: btn(), settingsPanel: div(), settingsClose: btn(),
+    landing: div(), dropZone: div(), fileInput: input(),
+    readerContent: div(), readerFooter: div(),
+    prevBtn: btn(), nextBtn: btn(),
+    progressBar: div(), chapterIndicator: div(),
+    recentFiles: div(), recentList: div(),
+    fontSizeSetting: input(), fontSizeValue: div(),
+    fontFamilySetting: select(),
+    lineSpacingSetting: input(), lineSpacingValue: div(),
+    themeSetting: select(), readingModeSetting: select(),
+    pinyinSetting: input(),
+  };
+}
 
 function createMockFile(
   name: string,

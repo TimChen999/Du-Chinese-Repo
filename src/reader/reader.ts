@@ -29,6 +29,7 @@ import {
   LLM_TEMPERATURE,
 } from "../shared/constants";
 import type { ExtensionSettings, LLMConfig } from "../shared/types";
+import { saveFileHandle, getFileHandle } from "./file-handle-store";
 import { getRendererForFile, getSupportedExtensions } from "./renderers/renderer-registry";
 import { EpubRenderer } from "./renderers/epub-renderer";
 import type {
@@ -218,8 +219,52 @@ async function renderRecentFiles(els: ReturnType<typeof getElements>): Promise<v
       `<div class="recent-item-title">${escapeHtml(entry.title)}</div>` +
       `<div class="recent-item-meta">${escapeHtml(entry.author)} &mdash; Ch ${entry.currentChapter + 1}</div>` +
       `</div>`;
+    item.addEventListener("click", () => openRecentFile(entry, els));
     els.recentList.appendChild(item);
   }
+}
+
+// ─── Re-open from recent list ───────────────────────────────────────
+
+export async function openRecentFile(
+  entry: ReadingState,
+  els: ReturnType<typeof getElements>,
+): Promise<void> {
+  const handle = await getFileHandle(entry.fileHash);
+  if (!handle) {
+    alert(
+      `"${entry.title}" can no longer be opened automatically.\n` +
+      "Please re-open it using the file picker or drag-and-drop.",
+    );
+    return;
+  }
+
+  try {
+    const permission = await handle.requestPermission({ mode: "read" });
+    if (permission !== "granted") {
+      alert("File access was denied. Please grant permission and try again.");
+      return;
+    }
+  } catch {
+    alert(
+      `Could not access "${entry.title}".\n` +
+      "The file may have been moved or deleted.",
+    );
+    return;
+  }
+
+  let file: File;
+  try {
+    file = await handle.getFile();
+  } catch {
+    alert(
+      `Could not read "${entry.title}".\n` +
+      "The file may have been moved or deleted.",
+    );
+    return;
+  }
+
+  await openFile(file, els, handle);
 }
 
 // ─── Pinyin integration (two-phase) ────────────────────────────────
@@ -307,7 +352,11 @@ function attachSelectionHandler(renderer: FormatRenderer): void {
 
 // ─── Core file loading ─────────────────────────────────────────────
 
-async function openFile(file: File, els: ReturnType<typeof getElements>): Promise<void> {
+async function openFile(
+  file: File,
+  els: ReturnType<typeof getElements>,
+  handle?: FileSystemFileHandle,
+): Promise<void> {
   if (currentRenderer) {
     stopAutosave();
     currentRenderer.destroy();
@@ -322,6 +371,10 @@ async function openFile(file: File, els: ReturnType<typeof getElements>): Promis
 
   currentRenderer = renderer;
   currentFileHash = await getFileHash(file);
+
+  if (handle) {
+    saveFileHandle(currentFileHash, handle).catch(() => {});
+  }
 
   const metadata = await renderer.load(file);
   currentMetadata = metadata;
@@ -469,10 +522,29 @@ export async function initReader(): Promise<void> {
 
   // ── File loading ──────────────────────────────────────────────
 
-  els.fileInput.addEventListener("change", () => {
-    const file = els.fileInput.files?.[0];
-    if (file) openFile(file, els);
-  });
+  if (typeof window.showOpenFilePicker === "function") {
+    const label = els.fileInput.closest("label") ?? els.fileInput.parentElement;
+    if (label) {
+      label.addEventListener("click", async (e) => {
+        e.preventDefault();
+        try {
+          const [handle] = await window.showOpenFilePicker({
+            types: [{ description: "EPUB files", accept: { "application/epub+zip": [".epub"] } }],
+            multiple: false,
+          });
+          const file = await handle.getFile();
+          await openFile(file, els, handle);
+        } catch {
+          // User cancelled the picker
+        }
+      });
+    }
+  } else {
+    els.fileInput.addEventListener("change", () => {
+      const file = els.fileInput.files?.[0];
+      if (file) openFile(file, els);
+    });
+  }
 
   // ── Drag and drop ─────────────────────────────────────────────
 
@@ -485,9 +557,24 @@ export async function initReader(): Promise<void> {
     els.dropZone.classList.remove("drag-over");
   });
 
-  els.dropZone.addEventListener("drop", (e) => {
+  els.dropZone.addEventListener("drop", async (e) => {
     e.preventDefault();
     els.dropZone.classList.remove("drag-over");
+
+    const item = e.dataTransfer?.items?.[0];
+    if (item && typeof item.getAsFileSystemHandle === "function") {
+      try {
+        const handle = await item.getAsFileSystemHandle() as FileSystemFileHandle;
+        if (handle?.kind === "file") {
+          const file = await handle.getFile();
+          await openFile(file, els, handle);
+          return;
+        }
+      } catch {
+        // Fall through to legacy path
+      }
+    }
+
     const file = e.dataTransfer?.files[0];
     if (file) openFile(file, els);
   });
