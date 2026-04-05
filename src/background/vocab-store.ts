@@ -79,3 +79,14 @@ export async function getAllVocab(): Promise<VocabEntry[]> {
 export async function clearVocab(): Promise<void> {
   await chrome.storage.local.remove(STORAGE_KEY);
 }
+
+/**
+ * Removes a single word from the vocab store by its chars key.
+ * No-op if the word does not exist.
+ */
+export async function removeWord(chars: string): Promise<void> {
+  const result = await chrome.storage.local.get(STORAGE_KEY);
+  const store: VocabRecord = result[STORAGE_KEY] ?? {};
+  delete store[chars];
+  await chrome.storage.local.set({ [STORAGE_KEY]: store });
+}

@@ -18,7 +18,7 @@
 import { convertToPinyin } from "./pinyin-service";
 import { queryLLM } from "./llm-client";
 import { hashText, getFromCache, saveToCache, evictExpiredEntries } from "./cache";
-import { recordWords } from "./vocab-store";
+import { recordWords, removeWord } from "./vocab-store";
 import {
   DEFAULT_SETTINGS,
   PROVIDER_PRESETS,
@@ -178,6 +178,11 @@ chrome.runtime.onMessage.addListener(
     if (message.type === "RECORD_WORD") {
       const word = message.word as { chars: string; pinyin: string; definition: string };
       recordWords([word]);
+      return;
+    }
+
+    if (message.type === "REMOVE_WORD") {
+      removeWord(message.chars as string);
       return;
     }
 

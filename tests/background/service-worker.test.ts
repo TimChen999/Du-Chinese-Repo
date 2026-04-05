@@ -4,6 +4,7 @@ import type { PinyinRequest, PinyinResponseLocal } from "../../src/shared/types"
 
 vi.mock("../../src/background/vocab-store", () => ({
   recordWords: vi.fn(() => Promise.resolve()),
+  removeWord: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock("../../src/background/cache", () => ({
@@ -244,6 +245,22 @@ describe("service-worker", () => {
 
       await new Promise((r) => setTimeout(r, 50));
       expect(recordWords).toHaveBeenCalledWith([word]);
+    });
+
+    it("calls removeWord when REMOVE_WORD message is received", async () => {
+      const { removeWord } = await import("../../src/background/vocab-store");
+      (removeWord as ReturnType<typeof vi.fn>).mockClear();
+
+      await loadServiceWorker();
+
+      chrome.runtime.onMessage.callListeners(
+        { type: "REMOVE_WORD", chars: "学习" },
+        { tab: { id: 1 } },
+        vi.fn(),
+      );
+
+      await new Promise((r) => setTimeout(r, 50));
+      expect(removeWord).toHaveBeenCalledWith("学习");
     });
   });
 

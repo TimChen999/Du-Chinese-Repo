@@ -16,7 +16,8 @@
 
 import { DEFAULT_SETTINGS, PROVIDER_PRESETS } from "../shared/constants";
 import type { ExtensionSettings, LLMProvider } from "../shared/types";
-import { getAllVocab, clearVocab } from "../background/vocab-store";
+import { getAllVocab, clearVocab, removeWord } from "../background/vocab-store";
+import type { VocabEntry } from "../shared/types";
 
 // ─── DOM References ─────────────────────────────────────────────────
 
@@ -251,6 +252,69 @@ function showStatus(
   }, 2000);
 }
 
+// ─── Vocab Card ─────────────────────────────────────────────────────
+
+function dismissVocabCard(): void {
+  document.querySelector(".vocab-card-overlay")?.remove();
+}
+
+function showVocabCard(
+  entry: VocabEntry,
+  els: ReturnType<typeof getElements>,
+): void {
+  dismissVocabCard();
+
+  const overlay = document.createElement("div");
+  overlay.className = "vocab-card-overlay";
+
+  const card = document.createElement("div");
+  card.className = "vocab-card";
+
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "vocab-card-close";
+  closeBtn.textContent = "\u00d7";
+  closeBtn.addEventListener("click", dismissVocabCard);
+
+  const chars = document.createElement("div");
+  chars.className = "vocab-card-chars";
+  chars.textContent = entry.chars;
+
+  const pinyin = document.createElement("div");
+  pinyin.className = "vocab-card-pinyin";
+  pinyin.textContent = entry.pinyin;
+
+  const def = document.createElement("div");
+  def.className = "vocab-card-def";
+  def.textContent = entry.definition;
+
+  const meta = document.createElement("div");
+  meta.className = "vocab-card-meta";
+  const seen = new Date(entry.lastSeen).toLocaleDateString();
+  meta.textContent = `Seen ${entry.count} time${entry.count !== 1 ? "s" : ""} \u00b7 Last: ${seen}`;
+
+  const actions = document.createElement("div");
+  actions.className = "vocab-card-actions";
+
+  const deleteBtn = document.createElement("button");
+  deleteBtn.className = "vocab-card-delete";
+  deleteBtn.textContent = "Delete";
+  deleteBtn.addEventListener("click", async () => {
+    await removeWord(entry.chars);
+    dismissVocabCard();
+    renderVocabList(els);
+  });
+
+  actions.appendChild(deleteBtn);
+  card.append(closeBtn, chars, pinyin, def, meta, actions);
+  overlay.appendChild(card);
+
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) dismissVocabCard();
+  });
+
+  document.body.appendChild(overlay);
+}
+
 // ─── Vocab List ─────────────────────────────────────────────────────
 
 async function renderVocabList(els: ReturnType<typeof getElements>): Promise<void> {
@@ -274,11 +338,13 @@ async function renderVocabList(els: ReturnType<typeof getElements>): Promise<voi
   for (const entry of entries) {
     const row = document.createElement("div");
     row.className = "vocab-row";
+    row.style.cursor = "pointer";
     row.innerHTML =
       `<span class="vocab-chars">${entry.chars}</span>` +
       `<span class="vocab-pinyin">${entry.pinyin}</span>` +
       `<span class="vocab-def">${entry.definition}</span>` +
       `<span class="vocab-count">${entry.count}</span>`;
+    row.addEventListener("click", () => showVocabCard(entry, els));
     els.vocabList.appendChild(row);
   }
 }

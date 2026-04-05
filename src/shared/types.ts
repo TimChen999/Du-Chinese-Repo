@@ -166,5 +166,6 @@ export type ExtensionMessage =
   | { type: "RECORD_WORD"; word: { chars: string; pinyin: string; definition: string } }
   | { type: "OCR_START" }
   | { type: "OCR_START_SELECTION" }
+  | { type: "REMOVE_WORD"; chars: string }
   | { type: "OCR_CAPTURE_REQUEST"; rect: { x: number; y: number; width: number; height: number } }
   | { type: "OCR_CAPTURE_RESULT"; dataUrl: string };

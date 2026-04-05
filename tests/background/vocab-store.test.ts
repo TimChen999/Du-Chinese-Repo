@@ -3,6 +3,7 @@ import {
   recordWords,
   getAllVocab,
   clearVocab,
+  removeWord,
 } from "../../src/background/vocab-store";
 import { MAX_VOCAB_ENTRIES, VOCAB_STOP_WORDS } from "../../src/shared/constants";
 
@@ -200,6 +201,33 @@ describe("vocab-store", () => {
       const vocab = await getAllVocab();
       expect(vocab).toHaveLength(2);
       expect(vocab.map((v) => v.chars).sort()).toEqual(["中文", "学习"]);
+    });
+  });
+
+  describe("removeWord", () => {
+    it("removes a specific word leaving others intact", async () => {
+      await recordWords(sampleWords);
+      await removeWord("银行");
+
+      const vocab = await getAllVocab();
+      expect(vocab).toHaveLength(1);
+      expect(vocab[0].chars).toBe("工作");
+    });
+
+    it("does not throw when removing a word that does not exist", async () => {
+      await recordWords(sampleWords);
+      await expect(removeWord("不存在")).resolves.not.toThrow();
+
+      const vocab = await getAllVocab();
+      expect(vocab).toHaveLength(2);
+    });
+
+    it("results in empty store after removing the only word", async () => {
+      await recordWords([sampleWords[0]]);
+      await removeWord("银行");
+
+      const vocab = await getAllVocab();
+      expect(vocab).toHaveLength(0);
     });
   });
 });

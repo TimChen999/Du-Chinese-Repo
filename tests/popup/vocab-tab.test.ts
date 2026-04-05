@@ -17,15 +17,18 @@ import type { VocabEntry } from "../../src/shared/types";
 vi.mock("../../src/background/vocab-store", () => ({
   getAllVocab: vi.fn(),
   clearVocab: vi.fn(),
+  removeWord: vi.fn(),
 }));
 
 import {
   getAllVocab,
   clearVocab,
+  removeWord,
 } from "../../src/background/vocab-store";
 
 const mockedGetAllVocab = getAllVocab as ReturnType<typeof vi.fn>;
 const mockedClearVocab = clearVocab as ReturnType<typeof vi.fn>;
+const mockedRemoveWord = removeWord as ReturnType<typeof vi.fn>;
 
 // ─── Sample data ─────────────────────────────────────────────────────
 
@@ -113,6 +116,7 @@ async function loadPopup() {
   vi.doMock("../../src/background/vocab-store", () => ({
     getAllVocab: mockedGetAllVocab,
     clearVocab: mockedClearVocab,
+    removeWord: mockedRemoveWord,
   }));
 
   const mod = await import("../../src/popup/popup");
@@ -164,6 +168,7 @@ describe("vocab tab", () => {
     chrome.storage.sync.set.mockImplementation(() => Promise.resolve());
     mockedGetAllVocab.mockReset();
     mockedClearVocab.mockReset();
+    mockedRemoveWord.mockReset();
   });
 
   afterEach(() => {
@@ -309,6 +314,109 @@ describe("vocab tab", () => {
       expect(tabVocab().classList.contains("hidden")).toBe(true);
       expect(settingsTabBtn().classList.contains("active")).toBe(true);
       expect(vocabTabBtn().classList.contains("active")).toBe(false);
+    });
+  });
+
+  // ─── Vocab card ──────────────────────────────────────────────
+
+  describe("vocab card", () => {
+    it("shows floating card overlay when a vocab row is clicked", async () => {
+      mockedGetAllVocab.mockResolvedValue([...sampleVocab]);
+      await loadPopup();
+      await switchToVocabTab();
+
+      const row = vocabList().querySelector(".vocab-row") as HTMLDivElement;
+      row.click();
+
+      const overlay = document.querySelector(".vocab-card-overlay");
+      expect(overlay).not.toBeNull();
+    });
+
+    it("card displays correct chars, pinyin, and definition", async () => {
+      mockedGetAllVocab.mockResolvedValue([sampleVocab[0]]);
+      await loadPopup();
+      await switchToVocabTab();
+
+      const row = vocabList().querySelector(".vocab-row") as HTMLDivElement;
+      row.click();
+
+      const card = document.querySelector(".vocab-card")!;
+      expect(card.querySelector(".vocab-card-chars")!.textContent).toBe("银行");
+      expect(card.querySelector(".vocab-card-pinyin")!.textContent).toBe("yín háng");
+      expect(card.querySelector(".vocab-card-def")!.textContent).toBe("bank");
+    });
+
+    it("clicking delete calls removeWord and re-renders list", async () => {
+      mockedGetAllVocab.mockResolvedValue([...sampleVocab]);
+      mockedRemoveWord.mockResolvedValue(undefined);
+      await loadPopup();
+      await switchToVocabTab();
+
+      const row = vocabList().querySelector(".vocab-row") as HTMLDivElement;
+      const targetChars = row.querySelector(".vocab-chars")!.textContent!;
+      row.click();
+
+      mockedGetAllVocab.mockResolvedValue(
+        sampleVocab.filter((e) => e.chars !== targetChars),
+      );
+
+      const deleteBtn = document.querySelector(".vocab-card-delete") as HTMLButtonElement;
+      deleteBtn.click();
+
+      await vi.waitFor(() => {
+        expect(mockedRemoveWord).toHaveBeenCalledWith(targetChars);
+      });
+
+      await vi.waitFor(() => {
+        expect(document.querySelector(".vocab-card-overlay")).toBeNull();
+      });
+
+      await vi.waitFor(() => {
+        const rows = vocabList().querySelectorAll(".vocab-row");
+        expect(rows).toHaveLength(2);
+      });
+    });
+
+    it("clicking overlay backdrop dismisses the card", async () => {
+      mockedGetAllVocab.mockResolvedValue([sampleVocab[0]]);
+      await loadPopup();
+      await switchToVocabTab();
+
+      const row = vocabList().querySelector(".vocab-row") as HTMLDivElement;
+      row.click();
+
+      const overlay = document.querySelector(".vocab-card-overlay") as HTMLDivElement;
+      expect(overlay).not.toBeNull();
+
+      overlay.click();
+      expect(document.querySelector(".vocab-card-overlay")).toBeNull();
+    });
+
+    it("clicking close button dismisses the card", async () => {
+      mockedGetAllVocab.mockResolvedValue([sampleVocab[0]]);
+      await loadPopup();
+      await switchToVocabTab();
+
+      const row = vocabList().querySelector(".vocab-row") as HTMLDivElement;
+      row.click();
+
+      const closeBtn = document.querySelector(".vocab-card-close") as HTMLButtonElement;
+      closeBtn.click();
+
+      expect(document.querySelector(".vocab-card-overlay")).toBeNull();
+    });
+
+    it("only one card is shown at a time", async () => {
+      mockedGetAllVocab.mockResolvedValue([...sampleVocab]);
+      await loadPopup();
+      await switchToVocabTab();
+
+      const rows = vocabList().querySelectorAll(".vocab-row");
+      (rows[0] as HTMLDivElement).click();
+      (rows[1] as HTMLDivElement).click();
+
+      const overlays = document.querySelectorAll(".vocab-card-overlay");
+      expect(overlays).toHaveLength(1);
     });
   });
 });

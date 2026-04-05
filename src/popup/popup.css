@@ -317,6 +317,100 @@ input[type="range"] {
   padding: 24px 8px;
 }
 
+.vocab-row:hover {
+  background: #f3f4f6;
+  border-radius: 4px;
+}
+
+/* ─── Vocab card overlay ─────────────────────────────────────── */
+
+.vocab-card-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.vocab-card {
+  position: relative;
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 20px;
+  max-width: 280px;
+  width: 100%;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+}
+
+.vocab-card-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  border: none;
+  background: none;
+  font-size: 18px;
+  color: #9ca3af;
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.vocab-card-close:hover {
+  color: #374151;
+  background: #f3f4f6;
+}
+
+.vocab-card-chars {
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 4px;
+  color: #1a1a1a;
+}
+
+.vocab-card-pinyin {
+  font-size: 14px;
+  color: #6b7280;
+  margin-bottom: 8px;
+}
+
+.vocab-card-def {
+  font-size: 13px;
+  color: #374151;
+  line-height: 1.5;
+  word-wrap: break-word;
+  margin-bottom: 8px;
+}
+
+.vocab-card-meta {
+  font-size: 11px;
+  color: #9ca3af;
+  margin-bottom: 14px;
+}
+
+.vocab-card-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.vocab-card-delete {
+  padding: 5px 14px;
+  border: 1px solid #fca5a5;
+  border-radius: 4px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.vocab-card-delete:hover {
+  background: #fecaca;
+  border-color: #f87171;
+}
+
 /* ─── Dark mode ──────────────────────────────────────────────── */
 
 @media (prefers-color-scheme: dark) {
@@ -444,5 +538,50 @@ input[type="range"] {
 
   .vocab-empty {
     color: #6b7280;
+  }
+
+  .vocab-row:hover {
+    background: #374151;
+  }
+
+  .vocab-card {
+    background: #1f2937;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  }
+
+  .vocab-card-close {
+    color: #6b7280;
+  }
+
+  .vocab-card-close:hover {
+    color: #d1d5db;
+    background: #374151;
+  }
+
+  .vocab-card-chars {
+    color: #f3f4f6;
+  }
+
+  .vocab-card-pinyin {
+    color: #9ca3af;
+  }
+
+  .vocab-card-def {
+    color: #d1d5db;
+  }
+
+  .vocab-card-meta {
+    color: #6b7280;
+  }
+
+  .vocab-card-delete {
+    background: #7f1d1d;
+    border-color: #fca5a5;
+    color: #fca5a5;
+  }
+
+  .vocab-card-delete:hover {
+    background: #991b1b;
+    border-color: #f87171;
   }
 }
