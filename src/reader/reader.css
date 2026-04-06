@@ -105,8 +105,25 @@ body { background: var(--bg); color: var(--text); }
   flex: 1; min-height: 0;
 }
 
-/* epub.js iframe fills its container */
+/* epub.js container and iframe — suppress horizontal overflow only */
+.reader-content { overflow-x: hidden; }
+.reader-main { overflow-x: hidden; }
 .reader-content iframe { border: none; overflow: hidden; }
+.reader-content .epub-container {
+  overflow-x: hidden !important;
+}
+.reader-content .epub-container .epub-view {
+  overflow-x: hidden !important;
+}
+
+/* Paginated mode needs a fixed-height viewport for epub.js columns */
+.reader-content.paginated {
+  padding: 0;
+  max-width: none;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+}
 
 /* ── Landing state ──────────────────────────────────────────── */
 

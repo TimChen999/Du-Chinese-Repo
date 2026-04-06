@@ -55,10 +55,16 @@ export class EpubRenderer implements FormatRenderer {
     };
   }
 
+  setInitialFlow(flow: "scrolled-doc" | "paginated"): void {
+    this.currentFlow = flow;
+  }
+
   async renderTo(container: HTMLElement): Promise<void> {
     if (!this.book) throw new Error("No book loaded");
 
     this.container = container;
+    this.updateContainerClass();
+
     this.rendition = this.book.renderTo(container, {
       width: "100%",
       height: "100%",
@@ -66,6 +72,8 @@ export class EpubRenderer implements FormatRenderer {
       flow: this.currentFlow,
       allowScriptedContent: false,
     });
+
+    this.suppressHorizontalOverflow(this.rendition);
 
     if (this.relocatedCallback) {
       const cb = this.relocatedCallback;
@@ -174,6 +182,7 @@ export class EpubRenderer implements FormatRenderer {
 
     const savedLocation = this.getCurrentLocation();
     this.currentFlow = newFlow;
+    this.updateContainerClass();
 
     this.rendition?.destroy();
     this.container.innerHTML = "";
@@ -185,6 +194,8 @@ export class EpubRenderer implements FormatRenderer {
       flow: this.currentFlow,
       allowScriptedContent: false,
     });
+
+    this.suppressHorizontalOverflow(this.rendition);
 
     if (this.relocatedCallback) {
       const cb = this.relocatedCallback;
@@ -201,6 +212,33 @@ export class EpubRenderer implements FormatRenderer {
     } else {
       await this.rendition.display();
     }
+  }
+
+  private updateContainerClass(): void {
+    if (!this.container) return;
+    this.container.classList.toggle("paginated", this.currentFlow === "paginated");
+  }
+
+  private suppressHorizontalOverflow(rendition: Rendition): void {
+    rendition.themes.default({
+      "img": { "max-width": "100% !important", "height": "auto !important" },
+      "pre, code": { "white-space": "pre-wrap !important", "word-break": "break-all" },
+      "table": { "max-width": "100% !important" },
+    });
+
+    const patchContainer = () => {
+      if (!this.container) return;
+      const epubContainer = this.container.querySelector(".epub-container") as HTMLElement;
+      if (epubContainer) {
+        epubContainer.style.overflowX = "hidden";
+      }
+      this.container.querySelectorAll<HTMLElement>(".epub-view").forEach((v) => {
+        v.style.overflowX = "hidden";
+      });
+    };
+
+    patchContainer();
+    rendition.on("rendered", patchContainer);
   }
 
   private async extractCoverUrl(): Promise<string | undefined> {

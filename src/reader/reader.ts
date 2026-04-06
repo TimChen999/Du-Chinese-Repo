@@ -315,6 +315,25 @@ async function processSelection(
   }
 }
 
+// ─── Forward iframe key events to parent navigation ────────────────
+
+function attachKeyHandler(
+  renderer: FormatRenderer,
+  els: ReturnType<typeof getElements>,
+): void {
+  if (!(renderer instanceof EpubRenderer)) return;
+  const rendition = renderer.getRendition();
+  if (!rendition) return;
+
+  rendition.on("keydown", (e: KeyboardEvent) => {
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      e.preventDefault();
+      if (e.key === "ArrowLeft") els.prevBtn.click();
+      else els.nextBtn.click();
+    }
+  });
+}
+
 // ─── Selection handling for epub.js renditions ─────────────────────
 
 function attachSelectionHandler(renderer: FormatRenderer): void {
@@ -398,9 +417,13 @@ async function openFile(
   els.readerContent.classList.remove("hidden");
   els.readerFooter.classList.remove("hidden");
 
+  if (renderer instanceof EpubRenderer && readerSettings.readingMode === "paginated") {
+    renderer.setInitialFlow("paginated");
+  }
   await renderer.renderTo(els.readerContent);
   renderer.applySettings(readerSettings);
   attachSelectionHandler(renderer);
+  attachKeyHandler(renderer, els);
 
   renderer.onRelocated((spineIndex) => {
     if (metadata) {
@@ -627,6 +650,7 @@ export async function initReader(): Promise<void> {
     ) {
       await currentRenderer.applyReadingMode(readerSettings.readingMode, readerSettings);
       attachSelectionHandler(currentRenderer);
+      attachKeyHandler(currentRenderer, els);
     }
 
     els.settingsPanel.classList.add("hidden");
@@ -654,10 +678,14 @@ export async function initReader(): Promise<void> {
   // ── Keyboard shortcuts ────────────────────────────────────────
 
   document.addEventListener("keydown", (e) => {
-    if (e.key === "ArrowLeft") {
-      els.prevBtn.click();
-    } else if (e.key === "ArrowRight") {
-      els.nextBtn.click();
+    const tag = (document.activeElement?.tagName ?? "").toLowerCase();
+    const isInput = tag === "input" || tag === "textarea" || tag === "select";
+    if (isInput) return;
+
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      e.preventDefault();
+      if (e.key === "ArrowLeft") els.prevBtn.click();
+      else els.nextBtn.click();
     } else if (e.key === "Escape") {
       dismissOverlay();
     }
