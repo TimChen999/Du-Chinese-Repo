@@ -6,7 +6,7 @@
  * See: VOCAB_HUB_SPEC.md for the full feature specification.
  */
 
-import { getAllVocab, clearVocab, removeWord, updateFlashcardResult } from "../background/vocab-store";
+import { getAllVocab, clearVocab, removeWord, updateFlashcardResult, importVocab } from "../background/vocab-store";
 import { FLASHCARD_WRONG_POOL_RATIO } from "../shared/constants";
 import type { VocabEntry } from "../shared/types";
 
@@ -50,6 +50,10 @@ function getElements() {
     fcWrongList: document.getElementById("fc-wrong-list") as HTMLDivElement,
     fcAgain: document.getElementById("fc-again") as HTMLButtonElement,
     fcBack: document.getElementById("fc-back") as HTMLButtonElement,
+    exportBtn: document.getElementById("export-vocab") as HTMLButtonElement,
+    importBtn: document.getElementById("import-vocab") as HTMLButtonElement,
+    importFileInput: document.getElementById("import-file-input") as HTMLInputElement,
+    ioStatus: document.getElementById("io-status") as HTMLSpanElement,
   };
 }
 
@@ -374,6 +378,118 @@ function setupKeyboard(els: ReturnType<typeof getElements>): void {
   });
 }
 
+// ─── Export / Import ─────────────────────────────────────────────────
+
+let statusTimer: ReturnType<typeof setTimeout> | null = null;
+
+function showStatus(
+  els: ReturnType<typeof getElements>,
+  message: string,
+  kind: "success" | "error",
+): void {
+  if (statusTimer) clearTimeout(statusTimer);
+  els.ioStatus.textContent = message;
+  els.ioStatus.className = `io-status ${kind}`;
+  statusTimer = setTimeout(() => {
+    els.ioStatus.textContent = "";
+    els.ioStatus.className = "io-status";
+  }, 3000);
+}
+
+async function handleExport(els: ReturnType<typeof getElements>): Promise<void> {
+  const entries = await getAllVocab();
+  if (entries.length === 0) {
+    showStatus(els, "Nothing to export.", "error");
+    return;
+  }
+
+  const payload = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    entries,
+  };
+
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const date = new Date().toISOString().slice(0, 10);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `pinyin-tool-vocab-${date}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  showStatus(els, `Exported ${entries.length} words.`, "success");
+}
+
+function isValidEntry(obj: unknown): obj is { chars: string; pinyin: string; definition: string } {
+  if (typeof obj !== "object" || obj === null) return false;
+  const o = obj as Record<string, unknown>;
+  return typeof o.chars === "string" && typeof o.pinyin === "string" && typeof o.definition === "string";
+}
+
+function readFileAsText(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(file);
+  });
+}
+
+async function handleImport(
+  file: File,
+  els: ReturnType<typeof getElements>,
+): Promise<void> {
+  let text: string;
+  try {
+    text = await readFileAsText(file);
+  } catch {
+    showStatus(els, "Failed to read file.", "error");
+    return;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    showStatus(els, "Invalid JSON file.", "error");
+    return;
+  }
+
+  const data = parsed as Record<string, unknown>;
+  if (typeof data.version !== "number" || !Array.isArray(data.entries)) {
+    showStatus(els, "Invalid vocab file format.", "error");
+    return;
+  }
+
+  const valid = (data.entries as unknown[]).filter(isValidEntry);
+  if (valid.length === 0) {
+    showStatus(els, "No valid entries found.", "error");
+    return;
+  }
+
+  const entries = valid.map((e) => {
+    const raw = e as Record<string, unknown>;
+    return {
+      chars: raw.chars as string,
+      pinyin: raw.pinyin as string,
+      definition: raw.definition as string,
+      count: typeof raw.count === "number" ? raw.count : 1,
+      firstSeen: typeof raw.firstSeen === "number" ? raw.firstSeen : Date.now(),
+      lastSeen: typeof raw.lastSeen === "number" ? raw.lastSeen : Date.now(),
+      wrongStreak: typeof raw.wrongStreak === "number" ? raw.wrongStreak : 0,
+      totalReviews: typeof raw.totalReviews === "number" ? raw.totalReviews : 0,
+      totalCorrect: typeof raw.totalCorrect === "number" ? raw.totalCorrect : 0,
+    };
+  });
+
+  const result = await importVocab(entries);
+  showStatus(els, `Imported ${result.added + result.updated} words (${result.added} new, ${result.updated} updated).`, "success");
+  await renderVocabList(els);
+}
+
 // ─── Initialization ──────────────────────────────────────────────────
 
 export async function initHub(): Promise<void> {
@@ -412,6 +528,17 @@ export async function initHub(): Promise<void> {
     if (confirm("Clear all recorded words?")) {
       await clearVocab();
       renderVocabList(els);
+    }
+  });
+
+  // Export / Import
+  els.exportBtn.addEventListener("click", () => handleExport(els));
+  els.importBtn.addEventListener("click", () => els.importFileInput.click());
+  els.importFileInput.addEventListener("change", async () => {
+    const file = els.importFileInput.files?.[0];
+    if (file) {
+      await handleImport(file, els);
+      els.importFileInput.value = "";
     }
   });
 

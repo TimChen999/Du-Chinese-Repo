@@ -28,6 +28,12 @@
         <option value="recent">Most recent</option>
         <option value="alpha">Alphabetical</option>
       </select>
+      <div class="vocab-io-buttons">
+        <button type="button" id="export-vocab" class="io-btn">Export</button>
+        <button type="button" id="import-vocab" class="io-btn">Import</button>
+        <input type="file" id="import-file-input" accept=".json" hidden />
+        <span id="io-status" class="io-status"></span>
+      </div>
       <button type="button" id="clear-vocab" class="clear-btn">Clear List</button>
     </div>
     <div id="vocab-list" class="vocab-list"></div>

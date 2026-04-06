@@ -133,6 +133,44 @@ body {
   color: #991b1b;
 }
 
+/* ─── Vocab Import/Export ─────────────────────────────────────── */
+
+.vocab-io-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.io-btn {
+  padding: 6px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #f9fafb;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+  color: #374151;
+}
+
+.io-btn:hover {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+}
+
+.io-status {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.io-status.success {
+  color: #16a34a;
+}
+
+.io-status.error {
+  color: #dc2626;
+}
+
 /* ─── Vocab List ──────────────────────────────────────────────── */
 
 .vocab-list {
@@ -650,6 +688,26 @@ body[data-theme="dark"] .clear-btn:hover {
   color: #fca5a5;
 }
 
+body[data-theme="dark"] .io-btn {
+  background: #374151;
+  border-color: #4b5563;
+  color: #d1d5db;
+}
+
+body[data-theme="dark"] .io-btn:hover {
+  background: #1e3a5f;
+  border-color: #60a5fa;
+  color: #93c5fd;
+}
+
+body[data-theme="dark"] .io-status.success {
+  color: #4ade80;
+}
+
+body[data-theme="dark"] .io-status.error {
+  color: #f87171;
+}
+
 body[data-theme="dark"] .vocab-row {
   border-bottom-color: #374151;
 }
@@ -868,6 +926,11 @@ body[data-theme="dark"] .fc-close-btn:hover {
   body[data-theme="auto"] .vocab-controls select:focus { border-color: #60a5fa; box-shadow: 0 0 0 2px rgba(96,165,250,0.2); }
   body[data-theme="auto"] .clear-btn { background: #374151; border-color: #4b5563; color: #d1d5db; }
   body[data-theme="auto"] .clear-btn:hover { background: #7f1d1d; border-color: #fca5a5; color: #fca5a5; }
+
+  body[data-theme="auto"] .io-btn { background: #374151; border-color: #4b5563; color: #d1d5db; }
+  body[data-theme="auto"] .io-btn:hover { background: #1e3a5f; border-color: #60a5fa; color: #93c5fd; }
+  body[data-theme="auto"] .io-status.success { color: #4ade80; }
+  body[data-theme="auto"] .io-status.error { color: #f87171; }
 
   body[data-theme="auto"] .vocab-row { border-bottom-color: #374151; }
   body[data-theme="auto"] .vocab-row:hover { background: #1f2937; }

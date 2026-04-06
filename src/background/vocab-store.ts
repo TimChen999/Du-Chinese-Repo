@@ -119,3 +119,62 @@ export async function removeWord(chars: string): Promise<void> {
   delete store[chars];
   await chrome.storage.local.set({ [STORAGE_KEY]: store });
 }
+
+/**
+ * Merges an array of imported VocabEntry objects into the local store.
+ * For duplicates, takes the higher count, earliest firstSeen, latest
+ * lastSeen, and the review stats from whichever side has more reviews.
+ * Enforces MAX_VOCAB_ENTRIES via the same eviction as recordWords.
+ */
+export async function importVocab(
+  entries: VocabEntry[],
+): Promise<{ added: number; updated: number }> {
+  if (entries.length === 0) return { added: 0, updated: 0 };
+
+  const result = await chrome.storage.local.get(STORAGE_KEY);
+  const store: VocabRecord = result[STORAGE_KEY] ?? {};
+  let added = 0;
+  let updated = 0;
+
+  for (const entry of entries) {
+    const existing = store[entry.chars];
+    if (existing) {
+      existing.count = Math.max(existing.count, entry.count);
+      existing.firstSeen = Math.min(existing.firstSeen, entry.firstSeen);
+      existing.lastSeen = Math.max(existing.lastSeen, entry.lastSeen);
+      if ((entry.totalReviews ?? 0) > (existing.totalReviews ?? 0)) {
+        existing.totalReviews = entry.totalReviews ?? 0;
+        existing.totalCorrect = entry.totalCorrect ?? 0;
+        existing.wrongStreak = entry.wrongStreak ?? 0;
+      }
+      existing.pinyin = entry.pinyin;
+      existing.definition = entry.definition;
+      updated++;
+    } else {
+      store[entry.chars] = {
+        chars: entry.chars,
+        pinyin: entry.pinyin,
+        definition: entry.definition,
+        count: entry.count,
+        firstSeen: entry.firstSeen,
+        lastSeen: entry.lastSeen,
+        wrongStreak: entry.wrongStreak ?? 0,
+        totalReviews: entry.totalReviews ?? 0,
+        totalCorrect: entry.totalCorrect ?? 0,
+      };
+      added++;
+    }
+  }
+
+  const keys = Object.keys(store);
+  if (keys.length > MAX_VOCAB_ENTRIES) {
+    const sorted = keys.sort((a, b) => store[a].count - store[b].count);
+    const excess = keys.length - MAX_VOCAB_ENTRIES;
+    for (let i = 0; i < excess; i++) {
+      delete store[sorted[i]];
+    }
+  }
+
+  await chrome.storage.local.set({ [STORAGE_KEY]: store });
+  return { added, updated };
+}

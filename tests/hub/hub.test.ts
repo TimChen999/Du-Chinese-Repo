@@ -17,6 +17,7 @@ vi.mock("../../src/background/vocab-store", () => ({
   clearVocab: vi.fn(),
   removeWord: vi.fn(),
   updateFlashcardResult: vi.fn(),
+  importVocab: vi.fn(),
 }));
 
 import {
@@ -24,12 +25,14 @@ import {
   clearVocab,
   removeWord,
   updateFlashcardResult,
+  importVocab,
 } from "../../src/background/vocab-store";
 
 const mockedGetAllVocab = getAllVocab as ReturnType<typeof vi.fn>;
 const mockedClearVocab = clearVocab as ReturnType<typeof vi.fn>;
 const mockedRemoveWord = removeWord as ReturnType<typeof vi.fn>;
 const mockedUpdateResult = updateFlashcardResult as ReturnType<typeof vi.fn>;
+const mockedImportVocab = importVocab as ReturnType<typeof vi.fn>;
 
 // ─── Sample data ─────────────────────────────────────────────────────
 
@@ -60,6 +63,12 @@ function buildHubDOM(): void {
           <option value="recent">Most recent</option>
           <option value="alpha">Alphabetical</option>
         </select>
+        <div class="vocab-io-buttons">
+          <button type="button" id="export-vocab" class="io-btn">Export</button>
+          <button type="button" id="import-vocab" class="io-btn">Import</button>
+          <input type="file" id="import-file-input" accept=".json" hidden />
+          <span id="io-status" class="io-status"></span>
+        </div>
         <button type="button" id="clear-vocab" class="clear-btn">Clear List</button>
       </div>
       <div id="vocab-list" class="vocab-list"></div>
@@ -123,6 +132,7 @@ async function loadHub() {
     clearVocab: mockedClearVocab,
     removeWord: mockedRemoveWord,
     updateFlashcardResult: mockedUpdateResult,
+    importVocab: mockedImportVocab,
   }));
 
   const mod = await import("../../src/hub/hub");
@@ -167,6 +177,7 @@ describe("hub page", () => {
     mockedClearVocab.mockReset();
     mockedRemoveWord.mockReset();
     mockedUpdateResult.mockReset();
+    mockedImportVocab.mockReset();
   });
 
   afterEach(() => {
@@ -817,6 +828,166 @@ describe("hub page", () => {
       await vi.waitFor(() => {
         expect(mockedUpdateResult).toHaveBeenCalledWith(expect.any(String), false);
       });
+    });
+  });
+
+  // ─── Export / Import ────────────────────────────────────────────
+
+  describe("export/import", () => {
+    it("export triggers download with correct JSON structure", async () => {
+      mockedGetAllVocab.mockResolvedValue([...sampleVocab]);
+      await loadHub();
+
+      const origURL = globalThis.URL;
+      const createObjectURL = vi.fn(() => "blob:test");
+      const revokeObjectURL = vi.fn();
+      globalThis.URL = Object.assign(origURL, { createObjectURL, revokeObjectURL });
+
+      const clickSpy = vi.fn();
+      const origCreateElement = document.createElement.bind(document);
+      vi.spyOn(document, "createElement").mockImplementation((tag: string) => {
+        const el = origCreateElement(tag);
+        if (tag === "a") {
+          vi.spyOn(el, "click").mockImplementation(clickSpy);
+        }
+        return el;
+      });
+
+      const exportBtn = document.getElementById("export-vocab") as HTMLButtonElement;
+      exportBtn.click();
+
+      await vi.waitFor(() => {
+        expect(createObjectURL).toHaveBeenCalled();
+      });
+
+      const blob = createObjectURL.mock.calls[0][0] as Blob;
+      const reader = new FileReader();
+      const text = await new Promise<string>((resolve) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.readAsText(blob);
+      });
+      const parsed = JSON.parse(text);
+
+      expect(parsed.version).toBe(1);
+      expect(parsed.exportedAt).toBeDefined();
+      expect(parsed.entries).toHaveLength(3);
+      expect(parsed.entries[0].chars).toBeDefined();
+      expect(clickSpy).toHaveBeenCalled();
+      expect(revokeObjectURL).toHaveBeenCalled();
+
+      globalThis.URL = origURL;
+    });
+
+    it("export shows error when no words exist", async () => {
+      mockedGetAllVocab.mockResolvedValue([]);
+      await loadHub();
+
+      const exportBtn = document.getElementById("export-vocab") as HTMLButtonElement;
+      exportBtn.click();
+
+      await vi.waitFor(() => {
+        const status = document.getElementById("io-status")!;
+        expect(status.textContent).toContain("Nothing to export");
+      });
+    });
+
+    it("import button opens file picker", async () => {
+      mockedGetAllVocab.mockResolvedValue([]);
+      await loadHub();
+
+      const fileInput = document.getElementById("import-file-input") as HTMLInputElement;
+      const clickSpy = vi.spyOn(fileInput, "click");
+
+      const importBtn = document.getElementById("import-vocab") as HTMLButtonElement;
+      importBtn.click();
+
+      expect(clickSpy).toHaveBeenCalled();
+    });
+
+    it("import calls importVocab, re-renders list, shows status", async () => {
+      mockedGetAllVocab.mockResolvedValue([]);
+      mockedImportVocab.mockResolvedValue({ added: 2, updated: 1 });
+      await loadHub();
+
+      const payload = JSON.stringify({
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        entries: sampleVocab,
+      });
+      const file = new File([payload], "vocab.json", { type: "application/json" });
+
+      const fileInput = document.getElementById("import-file-input") as HTMLInputElement;
+      Object.defineProperty(fileInput, "files", { value: [file], writable: true });
+      fileInput.dispatchEvent(new Event("change"));
+
+      await vi.waitFor(() => {
+        expect(mockedImportVocab).toHaveBeenCalled();
+      });
+
+      await vi.waitFor(() => {
+        const status = document.getElementById("io-status")!;
+        expect(status.textContent).toContain("2 new");
+        expect(status.textContent).toContain("1 updated");
+      });
+    });
+
+    it("import rejects invalid JSON gracefully", async () => {
+      mockedGetAllVocab.mockResolvedValue([]);
+      await loadHub();
+
+      const file = new File(["not json"], "bad.json", { type: "application/json" });
+
+      const fileInput = document.getElementById("import-file-input") as HTMLInputElement;
+      Object.defineProperty(fileInput, "files", { value: [file], writable: true });
+      fileInput.dispatchEvent(new Event("change"));
+
+      await vi.waitFor(() => {
+        const status = document.getElementById("io-status")!;
+        expect(status.textContent).toContain("Invalid JSON");
+      });
+
+      expect(mockedImportVocab).not.toHaveBeenCalled();
+    });
+
+    it("import rejects files missing required fields", async () => {
+      mockedGetAllVocab.mockResolvedValue([]);
+      await loadHub();
+
+      const payload = JSON.stringify({
+        version: 1,
+        entries: [{ chars: "好" }, { foo: "bar" }],
+      });
+      const file = new File([payload], "bad.json", { type: "application/json" });
+
+      const fileInput = document.getElementById("import-file-input") as HTMLInputElement;
+      Object.defineProperty(fileInput, "files", { value: [file], writable: true });
+      fileInput.dispatchEvent(new Event("change"));
+
+      await vi.waitFor(() => {
+        const status = document.getElementById("io-status")!;
+        expect(status.textContent).toContain("No valid entries");
+      });
+
+      expect(mockedImportVocab).not.toHaveBeenCalled();
+    });
+
+    it("import rejects files with no version field", async () => {
+      mockedGetAllVocab.mockResolvedValue([]);
+      await loadHub();
+
+      const payload = JSON.stringify({ entries: sampleVocab });
+      const file = new File([payload], "bad.json", { type: "application/json" });
+
+      const fileInput = document.getElementById("import-file-input") as HTMLInputElement;
+      Object.defineProperty(fileInput, "files", { value: [file], writable: true });
+      fileInput.dispatchEvent(new Event("change"));
+
+      await vi.waitFor(() => {
+        const status = document.getElementById("io-status")!;
+        expect(status.textContent).toContain("Invalid vocab file format");
+      });
+
+      expect(mockedImportVocab).not.toHaveBeenCalled();
     });
   });
 });
