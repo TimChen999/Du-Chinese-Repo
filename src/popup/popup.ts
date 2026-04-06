@@ -318,6 +318,8 @@ function showVocabCard(
 
 // ─── Vocab List ─────────────────────────────────────────────────────
 
+const POPUP_VOCAB_LIMIT = 200;
+
 async function renderVocabList(els: ReturnType<typeof getElements>): Promise<void> {
   const entries = await getAllVocab();
   const sortBy = els.vocabSort.value;
@@ -328,15 +330,16 @@ async function renderVocabList(els: ReturnType<typeof getElements>): Promise<voi
     entries.sort((a, b) => b.count - a.count);
   }
 
+  const displayed = entries.slice(0, POPUP_VOCAB_LIMIT);
   els.vocabList.innerHTML = "";
 
-  if (entries.length === 0) {
+  if (displayed.length === 0) {
     els.vocabList.innerHTML =
       '<div class="vocab-empty">No words recorded yet. Select Chinese text on any page to start building your list.</div>';
     return;
   }
 
-  for (const entry of entries) {
+  for (const entry of displayed) {
     const row = document.createElement("div");
     row.className = "vocab-row";
     row.style.cursor = "pointer";
@@ -347,6 +350,13 @@ async function renderVocabList(els: ReturnType<typeof getElements>): Promise<voi
       `<span class="vocab-count">${entry.count}</span>`;
     row.addEventListener("click", () => showVocabCard(entry, els));
     els.vocabList.appendChild(row);
+  }
+
+  if (entries.length > POPUP_VOCAB_LIMIT) {
+    const note = document.createElement("div");
+    note.className = "vocab-empty";
+    note.textContent = `Showing ${POPUP_VOCAB_LIMIT} of ${entries.length} words \u2014 open Vocab Hub for the full list.`;
+    els.vocabList.appendChild(note);
   }
 }
 

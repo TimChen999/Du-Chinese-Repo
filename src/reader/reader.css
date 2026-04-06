@@ -106,7 +106,7 @@ body { background: var(--bg); color: var(--text); }
 }
 
 /* epub.js iframe fills its container */
-.reader-content iframe { border: none; }
+.reader-content iframe { border: none; overflow: hidden; }
 
 /* ── Landing state ──────────────────────────────────────────── */
 
