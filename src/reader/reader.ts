@@ -631,6 +631,9 @@ export async function initReader(): Promise<void> {
     } else {
       els.tocSidebar.classList.toggle("collapsed");
     }
+    els.tocSidebar.addEventListener("transitionend", () => {
+      currentRenderer?.resize();
+    }, { once: true });
   });
 
   // ── Settings panel ────────────────────────────────────────────

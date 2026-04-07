@@ -42,6 +42,7 @@ export interface FormatRenderer {
   getSpineIndex(href: string): number;
   onRelocated(callback: (spineIndex: number) => void): void;
   applySettings(settings: ReaderSettings): void;
+  resize(): void;
   destroy(): void;
 }
 

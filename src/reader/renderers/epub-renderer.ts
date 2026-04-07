@@ -123,6 +123,10 @@ export class EpubRenderer implements FormatRenderer {
     return doc.document.body?.textContent?.slice(0, 500) ?? "";
   }
 
+  resize(): void {
+    this.rendition?.resize();
+  }
+
   destroy(): void {
     this.rendition?.destroy();
     this.book?.destroy();
