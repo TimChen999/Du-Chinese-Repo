@@ -33,7 +33,7 @@ function createMockRendition() {
     ]),
     destroy: vi.fn(),
     on: vi.fn(),
-    themes: { override: vi.fn() },
+    themes: { override: vi.fn(), default: vi.fn() },
   };
 }
 
