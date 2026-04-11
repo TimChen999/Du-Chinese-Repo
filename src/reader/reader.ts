@@ -659,15 +659,7 @@ export async function initReader(): Promise<void> {
   // ── TOC sidebar toggle ────────────────────────────────────────
 
   els.tocToggle.addEventListener("click", () => {
-    const isNarrow = window.innerWidth <= 900;
-    if (isNarrow) {
-      els.tocSidebar.classList.toggle("open");
-    } else {
-      els.tocSidebar.classList.toggle("collapsed");
-    }
-    els.tocSidebar.addEventListener("transitionend", async () => {
-      await currentRenderer?.resize();
-    }, { once: true });
+    els.tocSidebar.classList.toggle("collapsed");
   });
 
   // ── Settings panel ────────────────────────────────────────────

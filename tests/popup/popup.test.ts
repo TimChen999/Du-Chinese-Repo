@@ -78,9 +78,6 @@ function buildPopupDOM(): void {
     <button id="hub-btn">Vocab</button>
 
     <div id="tab-vocab" class="hidden">
-      <div class="vocab-controls">
-        <button type="button" id="clear-vocab">Clear List</button>
-      </div>
       <div id="vocab-list"></div>
     </div>
   `;

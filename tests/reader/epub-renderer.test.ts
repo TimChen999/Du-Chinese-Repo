@@ -298,22 +298,6 @@ describe("EpubRenderer", () => {
     });
   });
 
-  describe("resize()", () => {
-    it("calls rendition.resize() and restores saved location", async () => {
-      const { rendition } = await loadAndRender();
-      rendition.display.mockClear();
-
-      await renderer.resize();
-
-      expect(rendition.resize).toHaveBeenCalled();
-      expect(rendition.display).toHaveBeenCalledWith("epubcfi(/6/4)");
-    });
-
-    it("does not throw when no rendition exists", async () => {
-      await expect(renderer.resize()).resolves.toBeUndefined();
-    });
-  });
-
   describe("convertToc()", () => {
     it("converts flat NavItem list to TocEntry list", () => {
       const navItems = [

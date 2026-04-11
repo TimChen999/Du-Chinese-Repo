@@ -35,6 +35,7 @@ export class EpubRenderer implements FormatRenderer {
   private container: HTMLElement | null = null;
   private currentFlow: "scrolled-doc" | "paginated" = "scrolled-doc";
   private relocatedCallback: ((spineIndex: number) => void) | null = null;
+  private lastKnownCfi = "";
 
   async load(file: File): Promise<BookMetadata> {
     const arrayBuffer = await file.arrayBuffer();
@@ -75,13 +76,14 @@ export class EpubRenderer implements FormatRenderer {
 
     this.suppressHorizontalOverflow(this.rendition);
 
-    if (this.relocatedCallback) {
-      const cb = this.relocatedCallback;
-      this.rendition.on("relocated", (location: any) => {
-        const index = location?.start?.index;
-        if (typeof index === "number") cb(index);
-      });
-    }
+    this.rendition.on("relocated", (location: any) => {
+      const cfi = location?.start?.cfi;
+      if (cfi) this.lastKnownCfi = cfi;
+      const index = location?.start?.index;
+      if (typeof index === "number" && this.relocatedCallback) {
+        this.relocatedCallback(index);
+      }
+    });
 
     await this.rendition.display();
   }
@@ -123,15 +125,6 @@ export class EpubRenderer implements FormatRenderer {
     return doc.document.body?.textContent?.slice(0, 500) ?? "";
   }
 
-  async resize(): Promise<void> {
-    if (!this.rendition) return;
-    const savedLocation = this.getCurrentLocation();
-    this.rendition.resize();
-    if (savedLocation) {
-      await this.rendition.display(savedLocation);
-    }
-  }
-
   destroy(): void {
     this.rendition?.destroy();
     this.book?.destroy();
@@ -157,13 +150,6 @@ export class EpubRenderer implements FormatRenderer {
 
   onRelocated(callback: (spineIndex: number) => void): void {
     this.relocatedCallback = callback;
-    if (!this.rendition) return;
-    this.rendition.on("relocated", (location: any) => {
-      const index = location?.start?.index;
-      if (typeof index === "number") {
-        callback(index);
-      }
-    });
   }
 
   applySettings(settings: ReaderSettings): void {
@@ -189,7 +175,7 @@ export class EpubRenderer implements FormatRenderer {
     const newFlow = mode === "paginated" ? "paginated" : "scrolled-doc";
     if (newFlow === this.currentFlow || !this.book || !this.container) return;
 
-    const savedLocation = this.getCurrentLocation();
+    const savedLocation = this.getCurrentLocation() || this.lastKnownCfi;
     this.currentFlow = newFlow;
     this.updateContainerClass();
 
@@ -206,13 +192,14 @@ export class EpubRenderer implements FormatRenderer {
 
     this.suppressHorizontalOverflow(this.rendition);
 
-    if (this.relocatedCallback) {
-      const cb = this.relocatedCallback;
-      this.rendition.on("relocated", (location: any) => {
-        const index = location?.start?.index;
-        if (typeof index === "number") cb(index);
-      });
-    }
+    this.rendition.on("relocated", (location: any) => {
+      const cfi = location?.start?.cfi;
+      if (cfi) this.lastKnownCfi = cfi;
+      const index = location?.start?.index;
+      if (typeof index === "number" && this.relocatedCallback) {
+        this.relocatedCallback(index);
+      }
+    });
 
     this.applySettings(settings);
 

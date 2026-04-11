@@ -16,7 +16,7 @@
 
 import { DEFAULT_SETTINGS, PROVIDER_PRESETS } from "../shared/constants";
 import type { ExtensionSettings, LLMProvider } from "../shared/types";
-import { getAllVocab, clearVocab, removeWord } from "../background/vocab-store";
+import { getAllVocab, removeWord } from "../background/vocab-store";
 import type { VocabEntry } from "../shared/types";
 
 // ─── DOM References ─────────────────────────────────────────────────
@@ -44,7 +44,6 @@ function getElements() {
     tabSettings: document.getElementById("tab-settings") as HTMLDivElement,
     tabVocab: document.getElementById("tab-vocab") as HTMLDivElement,
     vocabList: document.getElementById("vocab-list") as HTMLDivElement,
-    clearVocabBtn: document.getElementById("clear-vocab") as HTMLButtonElement,
     refreshModels: document.getElementById("refresh-models") as HTMLButtonElement,
     ocrBtn: document.getElementById("ocr-btn") as HTMLButtonElement,
     readerBtn: document.getElementById("reader-btn") as HTMLButtonElement,
@@ -464,12 +463,6 @@ export async function initPopup(): Promise<void> {
     });
   });
 
-  els.clearVocabBtn.addEventListener("click", async () => {
-    if (confirm("Clear all recorded words?")) {
-      await clearVocab();
-      renderVocabList(els);
-    }
-  });
 }
 
 // ─── Auto-init when loaded as a popup ───────────────────────────────
