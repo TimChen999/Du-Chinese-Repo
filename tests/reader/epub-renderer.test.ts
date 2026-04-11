@@ -32,6 +32,7 @@ function createMockRendition() {
       },
     ]),
     destroy: vi.fn(),
+    resize: vi.fn(),
     on: vi.fn(),
     themes: { override: vi.fn(), default: vi.fn() },
   };
@@ -294,6 +295,22 @@ describe("EpubRenderer", () => {
 
     it("handles destroy when nothing is loaded", () => {
       expect(() => renderer.destroy()).not.toThrow();
+    });
+  });
+
+  describe("resize()", () => {
+    it("calls rendition.resize() and restores saved location", async () => {
+      const { rendition } = await loadAndRender();
+      rendition.display.mockClear();
+
+      await renderer.resize();
+
+      expect(rendition.resize).toHaveBeenCalled();
+      expect(rendition.display).toHaveBeenCalledWith("epubcfi(/6/4)");
+    });
+
+    it("does not throw when no rendition exists", async () => {
+      await expect(renderer.resize()).resolves.toBeUndefined();
     });
   });
 
