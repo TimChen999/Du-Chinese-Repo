@@ -106,7 +106,18 @@ export class EpubRenderer implements FormatRenderer {
 
   async prev(): Promise<boolean> {
     if (!this.rendition) return false;
+
+    const beforeIndex = (this.rendition.currentLocation() as any)?.start?.index;
     await this.rendition.prev();
+
+    if (this.currentFlow === "scrolled-doc") {
+      const afterIndex = (this.rendition.currentLocation() as any)?.start?.index;
+      if (typeof beforeIndex === "number" && typeof afterIndex === "number" && afterIndex !== beforeIndex) {
+        const scrollEl = this.container?.querySelector(".epub-container") as HTMLElement;
+        if (scrollEl) scrollEl.scrollTop = 0;
+      }
+    }
+
     return true;
   }
 
