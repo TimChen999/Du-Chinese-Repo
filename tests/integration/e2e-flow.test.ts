@@ -385,25 +385,28 @@ describe("error propagation", () => {
     dismissOverlay();
   });
 
-  it("LLM network error results in null and overlay shows error", async () => {
+  it("LLM network error returns typed error and overlay shows message", async () => {
     (fetch as any).mockRejectedValue(new Error("Network error"));
 
     const result = await queryLLM("你好", "context", openaiConfig);
-    expect(result).toBeNull();
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("NETWORK_ERROR");
+    }
 
     // Simulate what the service worker does: show Phase 1 then error
     const words = convertToPinyin("你好", "toneMarks");
     const rect = { top: 100, left: 200, bottom: 120, right: 400, width: 200, height: 20 } as DOMRect;
     showOverlay(words, rect, "light");
-    showOverlayError("LLM request failed");
+    if (!result.ok) showOverlayError(result.error.message);
 
     const shadow = document.getElementById("hg-extension-root")!.shadowRoot!;
     const translation = shadow.querySelector(".hg-translation");
-    expect(translation!.textContent).toBe("LLM request failed");
+    expect(translation!.textContent).toBe("Could not reach the LLM provider.");
     expect(translation!.classList.contains("hg-loading")).toBe(false);
   });
 
-  it("invalid LLM JSON results in null", async () => {
+  it("invalid LLM JSON returns INVALID_RESPONSE error", async () => {
     (fetch as any).mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -412,7 +415,10 @@ describe("error propagation", () => {
     });
 
     const result = await queryLLM("你好", "context", openaiConfig);
-    expect(result).toBeNull();
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("INVALID_RESPONSE");
+    }
   });
 
   it("validateLLMResponse rejects malformed structures", () => {
@@ -649,14 +655,15 @@ describe("full system round-trip", () => {
     });
 
     const llmResult = await queryLLM(text, context, openaiConfig);
-    expect(llmResult).not.toBeNull();
-    expect(validateLLMResponse(llmResult)).toBe(true);
+    expect(llmResult.ok).toBe(true);
+    if (!llmResult.ok) throw new Error("Expected ok result");
+    expect(validateLLMResponse(llmResult.data)).toBe(true);
 
     // 5. Save to cache
-    await saveToCache(cacheKey, llmResult!);
+    await saveToCache(cacheKey, llmResult.data);
 
     // 6. Phase 2: update overlay
-    updateOverlay(llmResult!.words, llmResult!.translation);
+    updateOverlay(llmResult.data.words, llmResult.data.translation);
     expect(shadow.querySelector(".hg-loading")).toBeNull();
     expect(shadow.querySelector(".hg-translation")!.textContent).toBe("Hello world");
 

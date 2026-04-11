@@ -18,6 +18,7 @@ import { containsChinese } from "../shared/chinese-detect";
 import {
   showOverlay,
   updateOverlay,
+  showOverlayError,
   dismissOverlay,
   setVocabCallback,
 } from "../content/overlay";
@@ -296,7 +297,10 @@ async function processSelection(
   }
 
   const preset = PROVIDER_PRESETS[settings.provider];
-  if (preset.requiresApiKey && !settings.apiKey) return;
+  if (preset.requiresApiKey && !settings.apiKey) {
+    showOverlayError("Set up an API key in extension settings for translations.");
+    return;
+  }
 
   const config: LLMConfig = {
     provider: settings.provider,
@@ -309,9 +313,13 @@ async function processSelection(
 
   const result = await queryLLM(truncated, context, config);
 
-  if (result && requestId === currentRequestId) {
-    await saveToCache(cacheKey, result);
-    updateOverlay(result.words, result.translation, settings.ttsEnabled);
+  if (requestId !== currentRequestId) return;
+
+  if (result.ok) {
+    await saveToCache(cacheKey, result.data);
+    updateOverlay(result.data.words, result.data.translation, settings.ttsEnabled);
+  } else {
+    showOverlayError(result.error.message);
   }
 }
 

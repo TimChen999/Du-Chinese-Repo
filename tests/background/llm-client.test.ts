@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { queryLLM, validateLLMResponse } from "../../src/background/llm-client";
+import { queryLLM, validateLLMResponse, type LLMResult } from "../../src/background/llm-client";
 import type { LLMConfig } from "../../src/shared/types";
 
 // ─── Test Fixtures ──────────────────────────────────────────────────
@@ -83,7 +83,8 @@ describe("queryLLM", () => {
         }),
       });
       const result = await queryLLM("你好", "context", openaiConfig);
-      expect(result).toEqual(sampleLLMData);
+      expect(result.ok).toBe(true);
+      expect((result as Extract<LLMResult, { ok: true }>).data).toEqual(sampleLLMData);
     });
   });
 
@@ -140,21 +141,47 @@ describe("queryLLM", () => {
         }),
       });
       const result = await queryLLM("你好", "context", geminiConfig);
-      expect(result).toEqual(sampleLLMData);
+      expect(result.ok).toBe(true);
+      expect((result as Extract<LLMResult, { ok: true }>).data).toEqual(sampleLLMData);
     });
   });
 
   describe("error handling (all providers)", () => {
-    it("returns null on network error", async () => {
+    it("returns NETWORK_ERROR on network error", async () => {
       (fetch as any).mockRejectedValue(new Error("Network error"));
       const result = await queryLLM("你好", "context", openaiConfig);
-      expect(result).toBeNull();
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe("NETWORK_ERROR");
+      }
     });
 
-    it("returns null on non-ok response (4xx)", async () => {
-      (fetch as any).mockResolvedValue({ ok: false, status: 401 });
+    it("returns AUTH_FAILED on 401 response", async () => {
+      (fetch as any).mockResolvedValue({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        text: async () => "Unauthorized",
+      });
       const result = await queryLLM("你好", "context", openaiConfig);
-      expect(result).toBeNull();
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe("AUTH_FAILED");
+      }
+    });
+
+    it("returns RATE_LIMITED on 429 response", async () => {
+      (fetch as any).mockResolvedValue({
+        ok: false,
+        status: 429,
+        statusText: "Too Many Requests",
+        text: async () => "Rate limited",
+      });
+      const result = await queryLLM("你好", "context", openaiConfig);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe("RATE_LIMITED");
+      }
     });
 
     it("retries once on 5xx error then succeeds", async () => {
@@ -169,10 +196,29 @@ describe("queryLLM", () => {
 
       const result = await queryLLM("你好", "context", openaiConfig);
       expect(fetch).toHaveBeenCalledTimes(2);
-      expect(result).toEqual(sampleLLMData);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data).toEqual(sampleLLMData);
+      }
     });
 
-    it("returns null when response has invalid structure", async () => {
+    it("returns SERVER_ERROR when 5xx persists after retry", async () => {
+      (fetch as any)
+        .mockResolvedValueOnce({ ok: false, status: 502 })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 502,
+          statusText: "Bad Gateway",
+          text: async () => "Bad Gateway",
+        });
+      const result = await queryLLM("你好", "context", openaiConfig);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe("SERVER_ERROR");
+      }
+    });
+
+    it("returns INVALID_RESPONSE when response has invalid structure", async () => {
       (fetch as any).mockResolvedValue({
         ok: true,
         json: async () => ({
@@ -182,10 +228,13 @@ describe("queryLLM", () => {
         }),
       });
       const result = await queryLLM("你好", "context", openaiConfig);
-      expect(result).toBeNull();
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe("INVALID_RESPONSE");
+      }
     });
 
-    it("returns null when response is not valid JSON", async () => {
+    it("returns INVALID_RESPONSE when response is not valid JSON", async () => {
       (fetch as any).mockResolvedValue({
         ok: true,
         json: async () => ({
@@ -193,7 +242,20 @@ describe("queryLLM", () => {
         }),
       });
       const result = await queryLLM("你好", "context", openaiConfig);
-      expect(result).toBeNull();
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe("INVALID_RESPONSE");
+      }
+    });
+
+    it("returns TIMEOUT when request exceeds LLM_TIMEOUT_MS", async () => {
+      const abortError = new DOMException("The operation was aborted.", "AbortError");
+      (fetch as any).mockRejectedValue(abortError);
+      const result = await queryLLM("你好", "context", openaiConfig);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe("TIMEOUT");
+      }
     });
   });
 });

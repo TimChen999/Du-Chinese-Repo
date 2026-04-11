@@ -240,11 +240,11 @@ describe("content script", () => {
       );
     });
 
-    it.skip("shows error state when LLM error arrives", () => {
+    it("shows error state when LLM error arrives", () => {
       chrome.runtime.onMessage.callListeners(
         {
           type: "PINYIN_ERROR",
-          error: "LLM request failed",
+          error: "API key is invalid or expired.",
           phase: "llm",
         },
         {},
@@ -252,7 +252,7 @@ describe("content script", () => {
       );
 
       expect(mockShowOverlayError).toHaveBeenCalledWith(
-        "LLM request failed",
+        "API key is invalid or expired.",
       );
     });
   });

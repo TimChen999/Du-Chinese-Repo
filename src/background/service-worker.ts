@@ -147,20 +147,20 @@ async function handleLLMPath(
 
   const result = await queryLLM(request.text, request.context, config);
 
-  if (result) {
+  if (result.ok) {
     console.log("[LLM] Success: %d words, translation='%s'",
-      result.words.length, result.translation.slice(0, 80));
-    await saveToCache(cacheKey, result);
+      result.data.words.length, result.data.translation.slice(0, 80));
+    await saveToCache(cacheKey, result.data);
     chrome.tabs.sendMessage(tabId, {
       type: "PINYIN_RESPONSE_LLM",
-      words: result.words,
-      translation: result.translation,
+      words: result.data.words,
+      translation: result.data.translation,
     });
   } else {
-    console.error("[LLM] queryLLM returned null — request failed");
+    console.error("[LLM] queryLLM failed: [%s] %s", result.error.code, result.error.message);
     chrome.tabs.sendMessage(tabId, {
       type: "PINYIN_ERROR",
-      error: "LLM request failed",
+      error: result.error.message,
       phase: "llm",
     });
   }

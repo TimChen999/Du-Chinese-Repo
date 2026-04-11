@@ -30,6 +30,24 @@ export interface LLMResponse {
   translation: string;
 }
 
+export type LLMErrorCode =
+  | "TIMEOUT"
+  | "NETWORK_ERROR"
+  | "AUTH_FAILED"
+  | "RATE_LIMITED"
+  | "SERVER_ERROR"
+  | "INVALID_RESPONSE"
+  | "UNKNOWN";
+
+export interface LLMError {
+  code: LLMErrorCode;
+  message: string;
+}
+
+export type LLMResult =
+  | { ok: true; data: LLMResponse }
+  | { ok: false; error: LLMError };
+
 // ─── Response Validation ────────────────────────────────────────────
 
 /**
@@ -168,7 +186,7 @@ export async function queryLLM(
   text: string,
   context: string,
   config: LLMConfig,
-): Promise<LLMResponse | null> {
+): Promise<LLMResult> {
   const preset = PROVIDER_PRESETS[config.provider];
   const apiStyle = preset.apiStyle;
 
@@ -176,15 +194,13 @@ export async function queryLLM(
   const timeout = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
 
   try {
-    const result = await attemptFetch(text, context, config, apiStyle, controller.signal);
-
-    if (result) return result;
-
-    console.warn("[LLM-client] attemptFetch returned null");
-    return null;
+    return await attemptFetch(text, context, config, apiStyle, controller.signal);
   } catch (err) {
+    if (err && typeof err === "object" && (err as { name?: string }).name === "AbortError") {
+      return { ok: false, error: { code: "TIMEOUT", message: "Translation timed out. Try again." } };
+    }
     console.error("[LLM-client] queryLLM caught error:", err);
-    return null;
+    return { ok: false, error: { code: "NETWORK_ERROR", message: "Could not reach the LLM provider." } };
   } finally {
     clearTimeout(timeout);
   }
@@ -201,14 +217,13 @@ async function attemptFetch(
   config: LLMConfig,
   apiStyle: APIStyle,
   signal: AbortSignal,
-): Promise<LLMResponse | null> {
+): Promise<LLMResult> {
   const { url, init } = buildRequest(text, context, config, apiStyle, signal);
 
   console.log("[LLM-client] Fetching: %s", url);
 
   let response = await fetch(url, init);
 
-  // Retry once on 5xx server errors
   if (!response.ok && response.status >= 500) {
     console.warn("[LLM-client] Got %d, retrying in 1s…", response.status);
     await new Promise((r) => setTimeout(r, 1000));
@@ -218,16 +233,35 @@ async function attemptFetch(
   if (!response.ok) {
     const body = await response.text().catch(() => "(unreadable)");
     console.error("[LLM-client] HTTP %d %s — body: %s", response.status, response.statusText, body.slice(0, 500));
-    return null;
+    return { ok: false, error: classifyHttpError(response.status) };
   }
 
-  const data = await response.json();
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    return { ok: false, error: { code: "INVALID_RESPONSE", message: "Received an invalid response from the LLM." } };
+  }
+
   const parsed = parseResponse(data, apiStyle);
 
   if (!validateLLMResponse(parsed)) {
     console.error("[LLM-client] Response failed validation. Raw parsed:", parsed);
-    return null;
+    return { ok: false, error: { code: "INVALID_RESPONSE", message: "Received an invalid response from the LLM." } };
   }
 
-  return parsed;
+  return { ok: true, data: parsed };
+}
+
+function classifyHttpError(status: number): LLMError {
+  if (status === 401 || status === 403) {
+    return { code: "AUTH_FAILED", message: "API key is invalid or expired." };
+  }
+  if (status === 429) {
+    return { code: "RATE_LIMITED", message: "Too many requests. Try again shortly." };
+  }
+  if (status >= 500) {
+    return { code: "SERVER_ERROR", message: "LLM server error. Try again later." };
+  }
+  return { code: "UNKNOWN", message: `LLM request failed (HTTP ${status}).` };
 }

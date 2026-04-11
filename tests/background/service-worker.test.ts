@@ -16,7 +16,7 @@ vi.mock("../../src/background/cache", () => ({
 }));
 
 vi.mock("../../src/background/llm-client", () => ({
-  queryLLM: vi.fn(() => Promise.resolve(null)),
+  queryLLM: vi.fn(() => Promise.resolve({ ok: false, error: { code: "UNKNOWN", message: "LLM request failed" } })),
   validateLLMResponse: vi.fn(() => true),
 }));
 
@@ -212,8 +212,11 @@ describe("service-worker", () => {
       const { recordWords } = await import("../../src/background/vocab-store");
       (getFromCache as ReturnType<typeof vi.fn>).mockResolvedValue(null);
       (queryLLM as ReturnType<typeof vi.fn>).mockResolvedValue({
-        words: [{ chars: "你好", pinyin: "nǐ hǎo", definition: "hello" }],
-        translation: "Hello",
+        ok: true,
+        data: {
+          words: [{ chars: "你好", pinyin: "nǐ hǎo", definition: "hello" }],
+          translation: "Hello",
+        },
       });
 
       await loadServiceWorker();
