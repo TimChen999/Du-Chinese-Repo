@@ -44,6 +44,7 @@ import {
   DEFAULT_READER_SETTINGS,
   MAX_RECENT_FILES,
   AUTOSAVE_INTERVAL_MS,
+  DEBOUNCE_SAVE_MS,
 } from "./reader-types";
 
 // ─── Module state ──────────────────────────────────────────────────
@@ -53,6 +54,7 @@ let currentMetadata: BookMetadata | null = null;
 let currentFileHash = "";
 let currentRequestId = 0;
 let autosaveTimer: ReturnType<typeof setInterval> | null = null;
+let debounceSaveTimer: ReturnType<typeof setTimeout> | null = null;
 let readerSettings: ReaderSettings = { ...DEFAULT_READER_SETTINGS };
 
 // ─── DOM references ────────────────────────────────────────────────
@@ -385,6 +387,7 @@ async function openFile(
   handle?: FileSystemFileHandle,
 ): Promise<void> {
   if (currentRenderer) {
+    flushDebouncedPersist();
     stopAutosave();
     currentRenderer.destroy();
     currentRenderer = null;
@@ -437,6 +440,7 @@ async function openFile(
     if (metadata) {
       metadata.currentChapter = spineIndex;
       updateProgress(els, metadata);
+      debouncedPersist();
     }
   });
 
@@ -465,16 +469,34 @@ async function openFile(
 
 function persistCurrentState(): void {
   if (!currentRenderer || !currentMetadata) return;
+  const location = currentRenderer.getCurrentLocation();
+  if (!location) return;
   saveReadingState({
     fileHash: currentFileHash,
     fileName: currentMetadata.title,
     title: currentMetadata.title,
     author: currentMetadata.author,
-    location: currentRenderer.getCurrentLocation(),
+    location,
     currentChapter: currentMetadata.currentChapter,
     totalChapters: currentMetadata.totalChapters,
     lastOpened: Date.now(),
   });
+}
+
+function debouncedPersist(): void {
+  if (debounceSaveTimer !== null) clearTimeout(debounceSaveTimer);
+  debounceSaveTimer = setTimeout(() => {
+    debounceSaveTimer = null;
+    persistCurrentState();
+  }, DEBOUNCE_SAVE_MS);
+}
+
+function flushDebouncedPersist(): void {
+  if (debounceSaveTimer !== null) {
+    clearTimeout(debounceSaveTimer);
+    debounceSaveTimer = null;
+    persistCurrentState();
+  }
 }
 
 function startAutosave(): void {
@@ -486,6 +508,10 @@ function stopAutosave(): void {
   if (autosaveTimer !== null) {
     clearInterval(autosaveTimer);
     autosaveTimer = null;
+  }
+  if (debounceSaveTimer !== null) {
+    clearTimeout(debounceSaveTimer);
+    debounceSaveTimer = null;
   }
 }
 
@@ -714,6 +740,7 @@ export async function initReader(): Promise<void> {
   // ── Save state on tab close ───────────────────────────────────
 
   window.addEventListener("beforeunload", () => {
+    flushDebouncedPersist();
     persistCurrentState();
   });
 }

@@ -78,3 +78,4 @@ export const DEFAULT_READER_SETTINGS: ReaderSettings = {
 
 export const MAX_RECENT_FILES = 20;
 export const AUTOSAVE_INTERVAL_MS = 30_000;
+export const DEBOUNCE_SAVE_MS = 2_000;
