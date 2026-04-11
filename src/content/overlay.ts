@@ -225,10 +225,16 @@ export function calculatePosition(
   const vpHeight = window.innerHeight;
 
   const spaceBelow = vpHeight - rect.bottom;
-  const top =
-    spaceBelow >= overlayHeight + gap
-      ? rect.bottom + gap
-      : rect.top - overlayHeight - gap;
+  const spaceAbove = rect.top;
+  let top: number;
+  if (spaceBelow >= overlayHeight + gap) {
+    top = rect.bottom + gap;
+  } else if (spaceAbove >= overlayHeight + gap) {
+    top = rect.top - overlayHeight - gap;
+  } else {
+    top = Math.max(gap, vpHeight - overlayHeight - gap);
+  }
+  top = Math.max(0, Math.min(top, vpHeight - overlayHeight));
 
   const idealLeft = rect.left + rect.width / 2 - overlayWidth / 2;
   const left = Math.max(0, Math.min(idealLeft, vpWidth - overlayWidth));
