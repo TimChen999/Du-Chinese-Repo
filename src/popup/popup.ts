@@ -46,8 +46,7 @@ function getElements() {
     vocabList: document.getElementById("vocab-list") as HTMLDivElement,
     refreshModels: document.getElementById("refresh-models") as HTMLButtonElement,
     ocrBtn: document.getElementById("ocr-btn") as HTMLButtonElement,
-    readerBtn: document.getElementById("reader-btn") as HTMLButtonElement,
-    hubBtn: document.getElementById("hub-btn") as HTMLButtonElement,
+    libraryBtn: document.getElementById("library-btn") as HTMLButtonElement,
   };
 }
 
@@ -346,7 +345,7 @@ async function renderVocabList(els: ReturnType<typeof getElements>): Promise<voi
   if (entries.length > POPUP_VOCAB_LIMIT) {
     const note = document.createElement("div");
     note.className = "vocab-empty";
-    note.textContent = `Showing ${POPUP_VOCAB_LIMIT} of ${entries.length} words \u2014 open Vocab Hub for the full list.`;
+    note.textContent = `Showing ${POPUP_VOCAB_LIMIT} of ${entries.length} words \u2014 open Library for the full list.`;
     els.vocabList.appendChild(note);
   }
 }
@@ -391,16 +390,9 @@ export async function initPopup(): Promise<void> {
     window.close();
   });
 
-  els.readerBtn.addEventListener("click", () => {
+  els.libraryBtn.addEventListener("click", () => {
     chrome.tabs.create({
-      url: chrome.runtime.getURL("src/reader/reader.html"),
-    });
-    window.close();
-  });
-
-  els.hubBtn.addEventListener("click", () => {
-    chrome.tabs.create({
-      url: chrome.runtime.getURL("src/hub/hub.html"),
+      url: chrome.runtime.getURL("src/library/library.html"),
     });
     window.close();
   });

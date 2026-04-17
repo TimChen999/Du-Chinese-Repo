@@ -31,11 +31,11 @@ A Chrome extension that lets you select Chinese text on **any webpage** and inst
 - **Save words to your vocab list** - Click the "Add to Vocab" button on any word definition card to save it for later study. Words are stored with their pinyin and contextual definition.
 - **Floating vocab card** - A compact floating card shows recently saved words with the option to delete individual entries.
 
-### Vocab Hub
+### Library (Reader + Vocab + Flashcards)
 
-- **Full-page study interface** - Open the Vocab Hub from the popup to browse all saved vocabulary in a spacious full-width layout with large characters, pinyin, and definitions.
+- **One unified study page** - Open the Library from the popup to access the EPUB Reader, Vocab list, and Flashcards as three sibling tabs in a single full-page app. Switch between features without losing state.
+- **Vocab list** - Browse all saved vocabulary in a spacious layout with large characters, pinyin, definitions, and review stats. Sort by frequency, recency, or alphabetically.
 - **Flashcard practice** - Practice saved words with flip-card sessions. Pick a session size, then flip cards to reveal answers. Right/wrong answers are tracked per word.
-- **Launch the reader** - The Vocab Hub also provides quick access to the built-in EPUB reader.
 
 ### Built-in EPUB Reader
 
@@ -150,7 +150,7 @@ The popup provides three top-level actions:
 
 1. **Settings** - Configure your LLM provider, pinyin style, theme, and other options.
 2. **Select text from image** - Activates OCR area selection mode. Drag a rectangle over any part of the page to extract text from images or non-selectable content.
-3. **Vocab Hub** - Opens the full-page vocabulary study interface in a new tab, with access to saved words, flashcards, and the EPUB reader.
+3. **Open Library** - Opens the full-page Library in a new tab, with sibling tabs for the EPUB Reader, the Vocab list, and Flashcards.
 
 ### Triggering the Pinyin Overlay
 
@@ -182,12 +182,12 @@ If LLM mode is off or no API key is configured, only Phase 1 runs.
 
 ### Using the EPUB Reader
 
-1. Open the Vocab Hub from the popup.
-2. Click the button to open the EPUB reader.
-3. Select an `.epub` file from your device.
-4. Read the book. Select any Chinese text within the reader to trigger the same pinyin overlay used on web pages.
-5. Navigate chapters via the table of contents sidebar. Your reading position is saved automatically.
-6. Recently opened books appear for quick re-opening without re-selecting the file.
+1. Open the Library from the popup. The Reader tab is shown by default.
+2. Select an `.epub` file from your device (drag-and-drop or file picker).
+3. Read the book. Select any Chinese text within the reader to trigger the same pinyin overlay used on web pages.
+4. Navigate chapters via the table of contents sidebar. Your reading position is saved automatically.
+5. Recently opened books appear for quick re-opening without re-selecting the file.
+6. Switch to the Vocab or Flashcards tab at any time without losing your reading position.
 
 ### Notes
 
@@ -255,18 +255,20 @@ pinyin-tool-extension/
       popup.ts                 # Settings form logic
       popup.css                # Popup styles
     reader/
-      reader.html              # EPUB reader page markup
       reader.ts                # Reader logic (file loading, navigation, settings)
-      reader.css               # Reader styles
+      reader.css               # Reader styles (loaded by library.html)
       file-handle-store.ts     # File System Access API persistence for recent books
       reader-types.ts          # Reader-specific TypeScript types
       renderers/
         epub-renderer.ts       # epub.js rendering integration
         renderer-registry.ts   # Pluggable renderer lookup
     hub/
-      hub.html                 # Vocab Hub page markup
       hub.ts                   # Hub logic (vocab list, flashcards)
-      hub.css                  # Hub styles
+      hub.css                  # Hub styles (loaded by library.html)
+    library/
+      library.html             # Unified Reader + Vocab + Flashcards page
+      library.ts               # Library shell: top-level tab switching, init orchestration
+      library.css              # Library page chrome (header, tab bar, panes)
     shared/
       types.ts                 # Shared TypeScript interfaces
       constants.ts             # All configurable values in one place
@@ -281,6 +283,7 @@ pinyin-tool-extension/
     popup/
     reader/
     hub/
+    library/
     integration/               # End-to-end and edge-case tests
   Implementation_docs/         # Architecture and design documentation
 ```

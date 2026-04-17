@@ -46,11 +46,6 @@ const sampleVocab: VocabEntry[] = [
 
 function buildHubDOM(): void {
   document.body.innerHTML = `
-    <header class="hub-header">
-      <h1 class="hub-title">Pinyin Tool — Study & Read</h1>
-      <button id="reader-btn" class="reader-btn">Open Reader</button>
-    </header>
-
     <nav class="hub-tab-bar">
       <button class="hub-tab active" data-tab="vocab">Vocab List</button>
       <button class="hub-tab" data-tab="flashcards">Flashcards</button>
@@ -202,22 +197,6 @@ describe("hub page", () => {
       mockedGetAllVocab.mockResolvedValue([]);
       await loadHub();
       expect(document.body.getAttribute("data-theme")).toBe("auto");
-    });
-  });
-
-  // ─── Reader button ─────────────────────────────────────────────
-
-  describe("reader button", () => {
-    it("opens reader.html in a new tab", async () => {
-      mockedGetAllVocab.mockResolvedValue([]);
-      await loadHub();
-
-      const readerBtn = document.getElementById("reader-btn") as HTMLButtonElement;
-      readerBtn.click();
-
-      expect(chrome.tabs.create).toHaveBeenCalledWith({
-        url: "chrome-extension://test/src/reader/reader.html",
-      });
     });
   });
 

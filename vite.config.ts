@@ -28,8 +28,7 @@ export default defineConfig({
     webExtension({
       manifest: "manifest.json",
       additionalInputs: [
-        "src/reader/reader.html",
-        "src/hub/hub.html",
+        "src/library/library.html",
       ],
     }),
     copyIconsPlugin(),

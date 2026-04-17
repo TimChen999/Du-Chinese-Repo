@@ -80,6 +80,7 @@ function getElements() {
     tocList: document.getElementById("toc-list") as HTMLElement,
     bookTitle: document.getElementById("book-title") as HTMLElement,
     bookAuthor: document.getElementById("book-author") as HTMLElement,
+    openFileBtn: document.getElementById("open-file-btn") as HTMLButtonElement,
     settingsToggle: document.getElementById("settings-toggle") as HTMLButtonElement,
     settingsPanel: document.getElementById("settings-panel") as HTMLElement,
     settingsClose: document.getElementById("settings-close") as HTMLButtonElement,
@@ -486,6 +487,7 @@ async function openFile(
   els.landing.classList.add("hidden");
   els.readerContent.classList.remove("hidden");
   els.readerFooter.classList.remove("hidden");
+  els.openFileBtn.classList.remove("hidden");
 
   if (renderer instanceof EpubRenderer && readerSettings.readingMode === "paginated") {
     renderer.setInitialFlow("paginated");
@@ -622,6 +624,37 @@ function escapeHtml(str: string): string {
     .replace(/>/g, "&gt;");
 }
 
+// ─── Return to landing ─────────────────────────────────────────────
+
+/**
+ * Tear down the active book and re-show the landing screen so the
+ * user can pick a different file. Mirrors the cleanup in openFile()
+ * so that a subsequent load starts from a clean slate.
+ */
+async function goToLanding(els: ReturnType<typeof getElements>): Promise<void> {
+  if (currentRenderer) {
+    flushDebouncedPersist();
+    stopAutosave();
+    currentRenderer.destroy();
+    currentRenderer = null;
+  }
+  currentMetadata = null;
+  currentFileHash = "";
+
+  els.bookTitle.textContent = "Pinyin Tool Reader";
+  els.bookAuthor.textContent = "";
+  document.title = "Pinyin Tool \u2014 Library";
+
+  els.tocList.innerHTML = "";
+  els.readerContent.innerHTML = "";
+  els.readerContent.classList.add("hidden");
+  els.readerFooter.classList.add("hidden");
+  els.openFileBtn.classList.add("hidden");
+  els.landing.classList.remove("hidden");
+
+  await renderRecentFiles(els);
+}
+
 // ─── Initialization ────────────────────────────────────────────────
 
 export async function initReader(): Promise<void> {
@@ -630,11 +663,17 @@ export async function initReader(): Promise<void> {
   applyTheme(readerSettings.theme);
   populateSettingsPanel(els, readerSettings);
 
+  els.openFileBtn?.classList.add("hidden");
+
   setVocabCallback((word) => {
     chrome.runtime.sendMessage({ type: "RECORD_WORD", word });
   });
 
   await renderRecentFiles(els);
+
+  els.openFileBtn?.addEventListener("click", () => {
+    goToLanding(els);
+  });
 
   // ── File loading ──────────────────────────────────────────────
 
@@ -796,8 +835,5 @@ export async function initReader(): Promise<void> {
   });
 }
 
-// ─── Auto-init ─────────────────────────────────────────────────────
-
-document.addEventListener("DOMContentLoaded", () => {
-  initReader();
-});
+// initReader() is invoked by the library shell (src/library/library.ts);
+// the reader no longer ships as a standalone page.

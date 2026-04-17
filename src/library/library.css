@@ -1,0 +1,228 @@
+/*
+ * Library page chrome -- header, top-level tab bar, pane container.
+ *
+ * Loaded AFTER reader.css and hub.css so it wins for body-level rules.
+ * Each pane (#library-pane-reader, #library-pane-vocab, #library-pane-
+ * flashcards) is a flex column that fills the remaining viewport
+ * height; the reader's toolbar/footer stay pinned, and the vocab and
+ * flashcards panes scroll internally.
+ */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  color: #1a1a1a;
+  overflow: hidden;
+}
+
+/* ─── Library header ─────────────────────────────────────────── */
+
+.library-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f9fafb;
+  flex-shrink: 0;
+  z-index: 30;
+}
+
+.library-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+/* ─── Library top-level tab bar ──────────────────────────────── */
+
+.library-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.library-tab {
+  padding: 8px 16px;
+  border: none;
+  background: none;
+  font-size: 14px;
+  font-weight: 500;
+  color: #6b7280;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.library-tab.active {
+  color: #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.library-tab:hover:not(.active) {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+/* ─── Pane container & individual panes ──────────────────────── */
+
+.library-content {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.library-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.library-pane.hidden {
+  display: none !important;
+}
+
+/* Reader pane keeps its fixed toolbar/footer via reader.css; just
+   ensure the inner reader-body fills the available space. */
+#library-pane-reader {
+  position: relative;
+}
+
+/* Vocab and flashcards panes scroll internally. The hub-tab-content
+   class from hub.css already centers the contents (max-width 720px,
+   margin auto) and gives a 24px padding. */
+#library-pane-vocab,
+#library-pane-flashcards {
+  overflow-y: auto;
+}
+
+/* ─── Dark mode ──────────────────────────────────────────────── */
+
+body[data-theme="dark"] {
+  background: #111827;
+  color: #f3f4f6;
+}
+
+body[data-theme="dark"] .library-header {
+  background: #1f2937;
+  border-bottom-color: #374151;
+}
+
+body[data-theme="dark"] .library-title {
+  color: #f3f4f6;
+}
+
+body[data-theme="dark"] .library-tab {
+  color: #9ca3af;
+}
+
+body[data-theme="dark"] .library-tab.active {
+  color: #60a5fa;
+  background: rgba(96, 165, 250, 0.15);
+}
+
+body[data-theme="dark"] .library-tab:hover:not(.active) {
+  background: #374151;
+  color: #d1d5db;
+}
+
+/* When the reader's auto theme resolves to "dark", #library-pane-
+   reader inherits the reader.css variable theme (set on body). The
+   body[data-theme] attribute drives both, so they stay in sync. */
+
+/* ─── Sepia (reader-only theme) ──────────────────────────────── */
+
+body[data-theme="sepia"] {
+  background: #f4ecd8;
+  color: #5c4b37;
+}
+
+body[data-theme="sepia"] .library-header {
+  background: #efe6d0;
+  border-bottom-color: #d4c8ab;
+}
+
+body[data-theme="sepia"] .library-title {
+  color: #5c4b37;
+}
+
+body[data-theme="sepia"] .library-tab {
+  color: #8b7355;
+}
+
+body[data-theme="sepia"] .library-tab.active {
+  color: #b8860b;
+  background: rgba(184, 134, 11, 0.12);
+}
+
+body[data-theme="sepia"] .library-tab:hover:not(.active) {
+  background: #ede4cf;
+  color: #5c4b37;
+}
+
+/* ─── Auto theme (follows OS) ────────────────────────────────── */
+
+@media (prefers-color-scheme: dark) {
+  body[data-theme="auto"] {
+    background: #111827;
+    color: #f3f4f6;
+  }
+
+  body[data-theme="auto"] .library-header {
+    background: #1f2937;
+    border-bottom-color: #374151;
+  }
+
+  body[data-theme="auto"] .library-title {
+    color: #f3f4f6;
+  }
+
+  body[data-theme="auto"] .library-tab {
+    color: #9ca3af;
+  }
+
+  body[data-theme="auto"] .library-tab.active {
+    color: #60a5fa;
+    background: rgba(96, 165, 250, 0.15);
+  }
+
+  body[data-theme="auto"] .library-tab:hover:not(.active) {
+    background: #374151;
+    color: #d1d5db;
+  }
+}
+
+/* ─── Responsive ─────────────────────────────────────────────── */
+
+@media (max-width: 600px) {
+  .library-header {
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .library-tabs {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .library-tab {
+    flex: 1;
+    padding: 8px 6px;
+    font-size: 13px;
+  }
+}

@@ -190,9 +190,9 @@ input[type="range"] {
   background: rgba(59, 130, 246, 0.08);
 }
 
-/* ─── Reader button ─────────────────────────────────────────── */
+/* ─── Library button ────────────────────────────────────────── */
 
-#reader-btn {
+#library-btn {
   width: 100%;
   padding: 8px;
   margin-bottom: 12px;
@@ -205,27 +205,8 @@ input[type="range"] {
   cursor: pointer;
 }
 
-#reader-btn:hover {
+#library-btn:hover {
   background: #2563eb;
-}
-
-/* ─── Hub (Vocab) button ─────────────────────────────────────── */
-
-#hub-btn {
-  width: 100%;
-  padding: 8px;
-  margin-bottom: 12px;
-  border: 1px solid #3b82f6;
-  border-radius: 4px;
-  background: transparent;
-  color: #3b82f6;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-#hub-btn:hover {
-  background: rgba(59, 130, 246, 0.08);
 }
 
 /* ─── Tab bar ────────────────────────────────────────────────── */
@@ -471,21 +452,12 @@ input[type="range"] {
     background: rgba(96, 165, 250, 0.12);
   }
 
-  #reader-btn {
+  #library-btn {
     background: #2563eb;
   }
 
-  #reader-btn:hover {
+  #library-btn:hover {
     background: #3b82f6;
-  }
-
-  #hub-btn {
-    border-color: #60a5fa;
-    color: #60a5fa;
-  }
-
-  #hub-btn:hover {
-    background: rgba(96, 165, 250, 0.12);
   }
 
   #save-btn {

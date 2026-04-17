@@ -23,7 +23,6 @@ interface FlashcardSession {
 
 function getElements() {
   return {
-    readerBtn: document.getElementById("reader-btn") as HTMLButtonElement,
     tabButtons: document.querySelectorAll<HTMLButtonElement>(".hub-tab"),
     tabVocab: document.getElementById("tab-vocab") as HTMLDivElement,
     tabFlashcards: document.getElementById("tab-flashcards") as HTMLDivElement,
@@ -496,13 +495,6 @@ export async function initHub(): Promise<void> {
   const els = getElements();
   await applyTheme();
 
-  // Reader button
-  els.readerBtn.addEventListener("click", () => {
-    chrome.tabs.create({
-      url: chrome.runtime.getURL("src/reader/reader.html"),
-    });
-  });
-
   // Tab switching
   els.tabButtons.forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -579,8 +571,5 @@ export async function initHub(): Promise<void> {
   await renderVocabList(els);
 }
 
-// ─── Auto-init ───────────────────────────────────────────────────────
-
-document.addEventListener("DOMContentLoaded", () => {
-  initHub();
-});
+// initHub() is invoked by the library shell (src/library/library.ts);
+// the hub no longer ships as a standalone page.

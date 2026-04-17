@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pinyin Tool — Library</title>
+  <link rel="stylesheet" href="../reader/reader.css" />
+  <link rel="stylesheet" href="../hub/hub.css" />
+  <link rel="stylesheet" href="library.css" />
+</head>
+<body data-theme="auto">
+
+  <!-- ── Library header + tab bar ────────────────────────────────── -->
+  <header class="library-header">
+    <h1 class="library-title">Pinyin Tool — Library</h1>
+    <nav class="library-tabs" aria-label="Library sections">
+      <button class="library-tab active" data-library-tab="reader">Reader</button>
+      <button class="library-tab" data-library-tab="vocab">Vocab</button>
+      <button class="library-tab" data-library-tab="flashcards">Flashcards</button>
+    </nav>
+  </header>
+
+  <main class="library-content">
+
+    <!-- ── Reader pane ──────────────────────────────────────────── -->
+    <section id="library-pane-reader" class="library-pane">
+
+      <!-- Top bar -->
+      <header class="reader-toolbar">
+        <button id="toc-toggle" class="toolbar-btn" title="Toggle table of contents" aria-label="Toggle table of contents">&#9776;</button>
+        <button id="open-file-btn" class="toolbar-btn" title="Open another book" aria-label="Open another book"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg></button>
+        <div class="toolbar-title">
+          <span id="book-title">Pinyin Tool Reader</span>
+          <span id="book-author"></span>
+        </div>
+        <button id="settings-toggle" class="toolbar-btn" title="Reader settings" aria-label="Reader settings"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+      </header>
+
+      <!-- Main layout -->
+      <div class="reader-body">
+
+        <!-- Sidebar: TOC -->
+        <aside id="toc-sidebar" class="toc-sidebar">
+          <nav id="toc-list" class="toc-list" aria-label="Table of contents"></nav>
+        </aside>
+
+        <!-- Content area -->
+        <main class="reader-main">
+
+          <!-- Landing state (no file loaded) -->
+          <div id="landing" class="landing">
+            <h2>Pinyin Tool Reader</h2>
+            <div id="drop-zone" class="drop-zone">
+              <p>Drag &amp; drop an EPUB file here to start reading</p>
+              <span class="drop-zone-divider">&mdash; or &mdash;</span>
+              <label class="file-picker-btn">
+                Choose File
+                <input type="file" id="file-input" accept=".epub" hidden />
+              </label>
+            </div>
+            <p class="supported-formats">Supported formats: .epub</p>
+            <div id="recent-files" class="recent-files">
+              <h3>Recent Files</h3>
+              <div id="recent-list"></div>
+            </div>
+          </div>
+
+          <!-- Reader content (hidden until a file loads) -->
+          <div id="reader-content" class="reader-content hidden"></div>
+        </main>
+      </div>
+
+      <!-- Bottom bar -->
+      <footer id="reader-footer" class="reader-footer hidden">
+        <button id="prev-btn" class="nav-btn" title="Previous chapter" aria-label="Previous chapter">&#9664; Prev</button>
+        <div class="progress-area">
+          <div class="progress-bar-track">
+            <div id="progress-bar" class="progress-bar-fill" style="width: 0%"></div>
+          </div>
+          <span id="chapter-indicator">Chapter 0 of 0</span>
+        </div>
+        <button id="next-btn" class="nav-btn" title="Next chapter" aria-label="Next chapter">Next &#9654;</button>
+      </footer>
+
+      <!-- Settings panel (overlay) -->
+      <div id="settings-panel" class="settings-panel hidden">
+        <div class="settings-inner">
+          <h3>Reader Settings</h3>
+
+          <div class="setting-group">
+            <label for="setting-font-size">Font Size: <span id="font-size-value">18</span>px</label>
+            <input type="range" id="setting-font-size" min="14" max="28" step="1" value="18" />
+          </div>
+
+          <div class="setting-group">
+            <label for="setting-font-family">Font Family</label>
+            <select id="setting-font-family">
+              <option value="system">System default</option>
+              <option value="serif">Serif</option>
+              <option value="sans-serif">Sans-serif</option>
+              <option value="noto-sans">Noto Sans SC</option>
+              <option value="noto-serif">Noto Serif SC</option>
+            </select>
+          </div>
+
+          <div class="setting-group">
+            <label for="setting-line-spacing">Line Spacing: <span id="line-spacing-value">1.8</span></label>
+            <input type="range" id="setting-line-spacing" min="1.4" max="2.2" step="0.1" value="1.8" />
+          </div>
+
+          <div class="setting-group">
+            <label for="setting-theme">Theme</label>
+            <select id="setting-theme">
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+              <option value="sepia">Sepia</option>
+              <option value="auto">Auto</option>
+            </select>
+          </div>
+
+          <div class="setting-group">
+            <label for="setting-reading-mode">Reading Mode</label>
+            <select id="setting-reading-mode">
+              <option value="scroll">Continuous Scroll</option>
+              <option value="paginated">Paginated</option>
+            </select>
+          </div>
+
+          <div class="setting-group checkbox-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="setting-pinyin" checked />
+              Enable pinyin overlay
+            </label>
+          </div>
+
+          <button id="settings-close" class="settings-close-btn">Close</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Vocab pane ───────────────────────────────────────────── -->
+    <section id="library-pane-vocab" class="library-pane hidden">
+      <div id="tab-vocab" class="hub-tab-content">
+        <div class="vocab-controls">
+          <select id="vocab-sort">
+            <option value="frequency">Most frequent</option>
+            <option value="recent">Most recent</option>
+            <option value="alpha">Alphabetical</option>
+          </select>
+          <div class="vocab-io-buttons">
+            <button type="button" id="export-vocab" class="io-btn">Export</button>
+            <button type="button" id="import-vocab" class="io-btn">Import</button>
+            <input type="file" id="import-file-input" accept=".json" hidden />
+            <span id="io-status" class="io-status"></span>
+          </div>
+          <button type="button" id="clear-vocab" class="clear-btn">Clear List</button>
+        </div>
+        <div id="vocab-list" class="vocab-list"></div>
+      </div>
+    </section>
+
+    <!-- ── Flashcards pane ──────────────────────────────────────── -->
+    <section id="library-pane-flashcards" class="library-pane hidden">
+      <div id="tab-flashcards" class="hub-tab-content">
+
+        <!-- Setup screen -->
+        <div id="fc-setup" class="fc-setup">
+          <h2>Practice your vocabulary</h2>
+          <p class="fc-prompt">How many cards?</p>
+          <div class="fc-size-buttons">
+            <button class="fc-size-btn" data-size="10">10</button>
+            <button class="fc-size-btn" data-size="20">20</button>
+            <button class="fc-size-btn" data-size="50">50</button>
+            <button class="fc-size-btn" data-size="all">All</button>
+          </div>
+          <p id="fc-available" class="fc-available">0 words available</p>
+          <button id="fc-start" class="fc-start-btn">Start</button>
+        </div>
+
+        <!-- Active session -->
+        <div id="fc-session" class="fc-session hidden">
+          <div class="fc-session-header">
+            <span id="fc-progress">Card 1 of 10</span>
+            <button id="fc-close" class="fc-close-btn" title="End session">&times;</button>
+          </div>
+          <div class="fc-card">
+            <div id="fc-chars" class="fc-chars"></div>
+            <div id="fc-answer" class="fc-answer hidden">
+              <div id="fc-pinyin" class="fc-pinyin"></div>
+              <div id="fc-definition" class="fc-definition"></div>
+            </div>
+          </div>
+          <div id="fc-actions" class="fc-actions">
+            <button id="fc-flip" class="fc-flip-btn">Flip</button>
+            <div id="fc-judge" class="fc-judge hidden">
+              <button id="fc-wrong" class="fc-wrong-btn" title="Wrong">&times;</button>
+              <button id="fc-right" class="fc-right-btn" title="Right">&#10003;</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Summary screen -->
+        <div id="fc-summary" class="fc-summary hidden">
+          <h2>Session Complete</h2>
+          <p id="fc-score" class="fc-score"></p>
+          <div id="fc-wrong-list" class="fc-wrong-list"></div>
+          <div class="fc-summary-actions">
+            <button id="fc-again" class="fc-again-btn">Practice Again</button>
+            <button id="fc-back" class="fc-back-btn">Back to List</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="library.ts"></script>
+</body>
+</html>
