@@ -730,6 +730,178 @@ describe("hub page", () => {
         expect(document.getElementById("tab-flashcards")!.classList.contains("hidden")).toBe(true);
       });
     });
+
+    it("Back to List does not hide #tab-flashcards when no .hub-tab buttons exist (library mode)", async () => {
+      // Build a library-style scaffold: same hub IDs, but no .hub-tab nav.
+      // hub.ts must not touch #tab-flashcards/#tab-vocab visibility here,
+      // because those divs live inside the library panes and need to stay
+      // visible for future tab activations.
+      document.body.innerHTML = `
+        <div id="tab-vocab">
+          <select id="vocab-sort">
+            <option value="frequency">Most frequent</option>
+          </select>
+          <button id="export-vocab"></button>
+          <button id="import-vocab"></button>
+          <input type="file" id="import-file-input" />
+          <span id="io-status"></span>
+          <button id="clear-vocab"></button>
+          <div id="vocab-list"></div>
+        </div>
+        <div id="tab-flashcards">
+          <div id="fc-setup">
+            <button class="fc-size-btn" data-size="10">10</button>
+            <button class="fc-size-btn" data-size="all">All</button>
+            <p id="fc-available"></p>
+            <button id="fc-start"></button>
+          </div>
+          <div id="fc-session" class="hidden">
+            <span id="fc-progress"></span>
+            <button id="fc-close"></button>
+            <div id="fc-chars"></div>
+            <div id="fc-answer" class="hidden">
+              <div id="fc-pinyin"></div>
+              <div id="fc-definition"></div>
+            </div>
+            <button id="fc-flip"></button>
+            <div id="fc-judge" class="hidden">
+              <button id="fc-wrong"></button>
+              <button id="fc-right"></button>
+            </div>
+          </div>
+          <div id="fc-summary" class="hidden">
+            <p id="fc-score"></p>
+            <div id="fc-wrong-list"></div>
+            <button id="fc-again"></button>
+            <button id="fc-back"></button>
+          </div>
+        </div>
+      `;
+
+      mockedGetAllVocab.mockResolvedValue([sampleVocab[0]]);
+      mockedUpdateResult.mockResolvedValue(undefined);
+      await loadHub();
+
+      // Run a one-card session to land on the summary screen.
+      const startBtn = document.getElementById("fc-start") as HTMLButtonElement;
+      startBtn.click();
+      await vi.waitFor(() => {
+        expect(document.getElementById("fc-session")!.classList.contains("hidden")).toBe(false);
+      });
+
+      const flipBtn = document.getElementById("fc-flip") as HTMLButtonElement;
+      flipBtn.click();
+      const rightBtn = document.getElementById("fc-right") as HTMLButtonElement;
+      rightBtn.click();
+
+      await vi.waitFor(() => {
+        expect(document.getElementById("fc-summary")!.classList.contains("hidden")).toBe(false);
+      });
+
+      // Click Back to List. Without .hub-tab buttons present, hub.ts must
+      // leave #tab-flashcards alone -- the library shell handles tab swap.
+      const backBtn = document.getElementById("fc-back") as HTMLButtonElement;
+      backBtn.click();
+
+      expect(document.getElementById("tab-flashcards")!.classList.contains("hidden")).toBe(false);
+      expect(document.getElementById("tab-vocab")!.classList.contains("hidden")).toBe(false);
+    });
+  });
+
+  // ─── Library-facing refresh hooks ──────────────────────────────
+
+  describe("refreshVocabView", () => {
+    it("re-renders the vocab list from current storage", async () => {
+      mockedGetAllVocab.mockResolvedValue([]);
+      const mod = await loadHub();
+
+      // List starts empty.
+      expect(vocabList().querySelector(".vocab-empty")).not.toBeNull();
+
+      mockedGetAllVocab.mockResolvedValue([...sampleVocab]);
+      await mod.refreshVocabView();
+
+      expect(vocabList().querySelectorAll(".vocab-row")).toHaveLength(3);
+    });
+
+    it("is a safe no-op when the vocab DOM is missing", async () => {
+      mockedGetAllVocab.mockResolvedValue([]);
+      const mod = await loadHub();
+
+      // Wipe the DOM entirely.
+      document.body.innerHTML = "";
+
+      await expect(mod.refreshVocabView()).resolves.toBeUndefined();
+    });
+  });
+
+  describe("refreshFlashcardsView", () => {
+    it("updates the available word count when called", async () => {
+      mockedGetAllVocab.mockResolvedValue([]);
+      const mod = await loadHub();
+
+      mockedGetAllVocab.mockResolvedValue([...sampleVocab]);
+      await mod.refreshFlashcardsView();
+
+      const available = document.getElementById("fc-available")!;
+      expect(available.textContent).toContain("3 words available");
+    });
+
+    it("shows the setup screen and hides summary when called from summary state", async () => {
+      mockedGetAllVocab.mockResolvedValue([sampleVocab[0]]);
+      mockedUpdateResult.mockResolvedValue(undefined);
+      const mod = await loadHub();
+      await switchToFlashcards();
+
+      const startBtn = document.getElementById("fc-start") as HTMLButtonElement;
+      startBtn.click();
+      await vi.waitFor(() => {
+        expect(document.getElementById("fc-session")!.classList.contains("hidden")).toBe(false);
+      });
+
+      const flipBtn = document.getElementById("fc-flip") as HTMLButtonElement;
+      flipBtn.click();
+      const rightBtn = document.getElementById("fc-right") as HTMLButtonElement;
+      rightBtn.click();
+
+      await vi.waitFor(() => {
+        expect(document.getElementById("fc-summary")!.classList.contains("hidden")).toBe(false);
+      });
+
+      mockedGetAllVocab.mockResolvedValue([...sampleVocab]);
+      await mod.refreshFlashcardsView();
+
+      expect(document.getElementById("fc-setup")!.classList.contains("hidden")).toBe(false);
+      expect(document.getElementById("fc-summary")!.classList.contains("hidden")).toBe(true);
+    });
+
+    it("preserves an active session when called mid-session", async () => {
+      mockedGetAllVocab.mockResolvedValue([...sampleVocab]);
+      mockedUpdateResult.mockResolvedValue(undefined);
+      const mod = await loadHub();
+      await switchToFlashcards();
+
+      const startBtn = document.getElementById("fc-start") as HTMLButtonElement;
+      startBtn.click();
+      await vi.waitFor(() => {
+        expect(document.getElementById("fc-session")!.classList.contains("hidden")).toBe(false);
+      });
+
+      await mod.refreshFlashcardsView();
+
+      // Session view stays mounted; setup is not re-shown.
+      expect(document.getElementById("fc-session")!.classList.contains("hidden")).toBe(false);
+      expect(document.getElementById("fc-setup")!.classList.contains("hidden")).toBe(true);
+    });
+
+    it("is a safe no-op when the flashcards DOM is missing", async () => {
+      mockedGetAllVocab.mockResolvedValue([]);
+      const mod = await loadHub();
+
+      document.body.innerHTML = "";
+
+      await expect(mod.refreshFlashcardsView()).resolves.toBeUndefined();
+    });
   });
 
   // ─── Keyboard shortcuts ────────────────────────────────────────

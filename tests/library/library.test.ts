@@ -19,13 +19,17 @@ vi.mock("../../src/reader/reader", () => ({
 
 vi.mock("../../src/hub/hub", () => ({
   initHub: vi.fn().mockResolvedValue(undefined),
+  refreshVocabView: vi.fn().mockResolvedValue(undefined),
+  refreshFlashcardsView: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { initReader } from "../../src/reader/reader";
-import { initHub } from "../../src/hub/hub";
+import { initHub, refreshVocabView, refreshFlashcardsView } from "../../src/hub/hub";
 
 const mockedInitReader = initReader as ReturnType<typeof vi.fn>;
 const mockedInitHub = initHub as ReturnType<typeof vi.fn>;
+const mockedRefreshVocabView = refreshVocabView as ReturnType<typeof vi.fn>;
+const mockedRefreshFlashcardsView = refreshFlashcardsView as ReturnType<typeof vi.fn>;
 
 // ─── DOM scaffold ────────────────────────────────────────────────────
 
@@ -42,9 +46,13 @@ function buildLibraryDOM(): void {
 
     <main class="library-content">
       <section id="library-pane-reader" class="library-pane"></section>
-      <section id="library-pane-vocab" class="library-pane hidden"></section>
+      <section id="library-pane-vocab" class="library-pane hidden">
+        <div id="tab-vocab" class="hub-tab-content"></div>
+      </section>
       <section id="library-pane-flashcards" class="library-pane hidden">
-        <button id="fc-back">Back to List</button>
+        <div id="tab-flashcards" class="hub-tab-content">
+          <button id="fc-back">Back to List</button>
+        </div>
       </section>
     </main>
   `;
@@ -60,6 +68,8 @@ async function loadLibrary() {
   }));
   vi.doMock("../../src/hub/hub", () => ({
     initHub: mockedInitHub,
+    refreshVocabView: mockedRefreshVocabView,
+    refreshFlashcardsView: mockedRefreshFlashcardsView,
   }));
 
   return await import("../../src/library/library");
@@ -83,6 +93,8 @@ describe("library page", () => {
     chrome.storage.sync.get.mockImplementation(() => Promise.resolve({}));
     mockedInitReader.mockReset().mockResolvedValue(undefined);
     mockedInitHub.mockReset().mockResolvedValue(undefined);
+    mockedRefreshVocabView.mockReset().mockResolvedValue(undefined);
+    mockedRefreshFlashcardsView.mockReset().mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -235,6 +247,118 @@ describe("library page", () => {
       expect(tabButton("flashcards").classList.contains("active")).toBe(false);
       expect(pane("vocab").classList.contains("hidden")).toBe(false);
       expect(pane("flashcards").classList.contains("hidden")).toBe(true);
+    });
+  });
+
+  // ─── Tab content refresh ───────────────────────────────────────
+
+  describe("tab activation refreshes hub views", () => {
+    it("calls refreshVocabView when activating the vocab tab", async () => {
+      const mod = await loadLibrary();
+      await mod.initLibrary();
+      mockedRefreshVocabView.mockClear();
+
+      tabButton("vocab").click();
+
+      expect(mockedRefreshVocabView).toHaveBeenCalledTimes(1);
+      expect(mockedRefreshFlashcardsView).not.toHaveBeenCalled();
+    });
+
+    it("calls refreshFlashcardsView when activating the flashcards tab", async () => {
+      const mod = await loadLibrary();
+      await mod.initLibrary();
+      mockedRefreshFlashcardsView.mockClear();
+
+      tabButton("flashcards").click();
+
+      expect(mockedRefreshFlashcardsView).toHaveBeenCalledTimes(1);
+      expect(mockedRefreshVocabView).not.toHaveBeenCalled();
+    });
+
+    it("does not call refresh hooks when activating the reader tab", async () => {
+      const mod = await loadLibrary();
+      await mod.initLibrary();
+
+      tabButton("vocab").click();
+      mockedRefreshVocabView.mockClear();
+      mockedRefreshFlashcardsView.mockClear();
+
+      tabButton("reader").click();
+
+      expect(mockedRefreshVocabView).not.toHaveBeenCalled();
+      expect(mockedRefreshFlashcardsView).not.toHaveBeenCalled();
+    });
+
+    it("refreshes vocab view via fc-back bridge", async () => {
+      const mod = await loadLibrary();
+      await mod.initLibrary();
+      mockedRefreshVocabView.mockClear();
+
+      const fcBack = document.getElementById("fc-back") as HTMLButtonElement;
+      fcBack.click();
+
+      expect(mockedRefreshVocabView).toHaveBeenCalled();
+    });
+
+    it("refreshes views on initial activation when ?tab=flashcards", async () => {
+      const mod = await loadLibrary();
+      await mod.initLibrary();
+      mockedRefreshFlashcardsView.mockClear();
+
+      mod.activateLibraryTab("flashcards");
+      expect(mockedRefreshFlashcardsView).toHaveBeenCalled();
+    });
+  });
+
+  // ─── Inner-div visibility (regression: blank pane after Back to List) ──
+
+  describe("inner div visibility", () => {
+    it("keeps #tab-flashcards visible after activating flashcards tab", async () => {
+      const mod = await loadLibrary();
+      await mod.initLibrary();
+
+      // Simulate the bug: a stale .hidden class added by the standalone-mode
+      // hub code path (e.g. from a prior fc-back click in an older build).
+      document.getElementById("tab-flashcards")!.classList.add("hidden");
+
+      tabButton("flashcards").click();
+
+      expect(
+        document.getElementById("tab-flashcards")!.classList.contains("hidden"),
+      ).toBe(false);
+    });
+
+    it("keeps #tab-vocab visible after activating vocab tab", async () => {
+      const mod = await loadLibrary();
+      await mod.initLibrary();
+
+      document.getElementById("tab-vocab")!.classList.add("hidden");
+
+      tabButton("vocab").click();
+
+      expect(
+        document.getElementById("tab-vocab")!.classList.contains("hidden"),
+      ).toBe(false);
+    });
+
+    it("flashcards pane is not blank after Back to List then re-activating flashcards", async () => {
+      const mod = await loadLibrary();
+      await mod.initLibrary();
+
+      // Go to flashcards, simulate finishing a session, then click Back to List.
+      tabButton("flashcards").click();
+      const fcBack = document.getElementById("fc-back") as HTMLButtonElement;
+      fcBack.click();
+
+      // The library bridge moves the user to Vocab. Now go back to Flashcards.
+      tabButton("flashcards").click();
+
+      // The inner content div must still be visible -- otherwise the user
+      // would see a blank pane (the original bug).
+      expect(
+        document.getElementById("tab-flashcards")!.classList.contains("hidden"),
+      ).toBe(false);
+      expect(pane("flashcards").classList.contains("hidden")).toBe(false);
     });
   });
 });

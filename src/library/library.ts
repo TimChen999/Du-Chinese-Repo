@@ -15,7 +15,7 @@
  */
 
 import { initReader } from "../reader/reader";
-import { initHub } from "../hub/hub";
+import { initHub, refreshVocabView, refreshFlashcardsView } from "../hub/hub";
 
 type LibraryTab = "reader" | "vocab" | "flashcards";
 
@@ -44,6 +44,21 @@ export function activateLibraryTab(tab: LibraryTab): void {
     const matches = pane.id === `library-pane-${tab}`;
     pane.classList.toggle("hidden", !matches);
   });
+
+  // The hub's inner #tab-vocab / #tab-flashcards divs live inside the
+  // corresponding library panes and must remain visible. Defensive
+  // reset in case any standalone-hub code path adds the .hidden class.
+  document.getElementById("tab-vocab")?.classList.remove("hidden");
+  document.getElementById("tab-flashcards")?.classList.remove("hidden");
+
+  // Refresh the activated pane's contents so the count/list reflect
+  // any changes made elsewhere (e.g. words added while reading, or a
+  // freshly stored vocab list on first navigation to the tab).
+  if (tab === "vocab") {
+    void refreshVocabView();
+  } else if (tab === "flashcards") {
+    void refreshFlashcardsView();
+  }
 }
 
 function setupLibraryTabs(): void {

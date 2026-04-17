@@ -556,12 +556,21 @@ export async function initHub(): Promise<void> {
   });
   els.fcBack.addEventListener("click", () => {
     session = null;
-    els.tabButtons.forEach((b) => b.classList.remove("active"));
-    const vocabTab = document.querySelector<HTMLButtonElement>('.hub-tab[data-tab="vocab"]');
-    vocabTab?.classList.add("active");
-    els.tabFlashcards.classList.add("hidden");
-    els.tabVocab.classList.remove("hidden");
-    renderVocabList(els);
+    // Only swap the inner #tab-vocab/#tab-flashcards visibility in
+    // standalone hub mode. When the hub is mounted inside the library
+    // shell, those inner divs live inside #library-pane-vocab and
+    // #library-pane-flashcards respectively and must stay visible --
+    // hiding them would blank out the corresponding library pane on
+    // the next visit. The library binds its own fc-back listener that
+    // calls activateLibraryTab("vocab") + refreshVocabView().
+    if (els.tabButtons.length > 0) {
+      els.tabButtons.forEach((b) => b.classList.remove("active"));
+      const vocabTab = document.querySelector<HTMLButtonElement>('.hub-tab[data-tab="vocab"]');
+      vocabTab?.classList.add("active");
+      els.tabFlashcards.classList.add("hidden");
+      els.tabVocab.classList.remove("hidden");
+      renderVocabList(els);
+    }
   });
 
   // Keyboard shortcuts
@@ -573,3 +582,33 @@ export async function initHub(): Promise<void> {
 
 // initHub() is invoked by the library shell (src/library/library.ts);
 // the hub no longer ships as a standalone page.
+
+// ─── Public refresh hooks (used by the library shell) ─────────────
+
+/**
+ * Re-renders the vocab list using the live storage contents. Safe to
+ * call repeatedly. Used by the library shell when the user activates
+ * the Vocab tab so the list always reflects words added since the
+ * last visit (e.g. while reading).
+ */
+export async function refreshVocabView(): Promise<void> {
+  const els = getElements();
+  if (!els.vocabList) return;
+  await renderVocabList(els);
+}
+
+/**
+ * Refreshes the flashcards setup screen (word count, button state).
+ * Used by the library shell when the user activates the Flashcards
+ * tab. Skipped when an active session card is on screen so that
+ * navigating away to Vocab and back does not interrupt the user.
+ */
+export async function refreshFlashcardsView(): Promise<void> {
+  const els = getElements();
+  if (!els.fcSetup) return;
+  if (els.fcSession && !els.fcSession.classList.contains("hidden")) {
+    return;
+  }
+  session = null;
+  await showSetup(els);
+}
