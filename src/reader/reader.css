@@ -128,6 +128,162 @@ body { background: var(--bg); color: var(--text); }
   position: relative;
 }
 
+/* ── DOM renderers (text/markdown/html/docx/subtitles) ─────── */
+
+.dom-renderer-content {
+  color: var(--text);
+  background: transparent;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.dom-renderer-content :where(h1, h2, h3, h4, h5, h6) {
+  margin: 1.4em 0 0.6em;
+  line-height: 1.3;
+  color: var(--text);
+}
+.dom-renderer-content h1 { font-size: 1.6em; }
+.dom-renderer-content h2 { font-size: 1.35em; }
+.dom-renderer-content h3 { font-size: 1.15em; }
+
+.dom-renderer-content :where(p, ul, ol, blockquote, pre, table) {
+  margin: 0.7em 0;
+}
+
+.dom-renderer-content blockquote {
+  border-left: 3px solid var(--border);
+  padding-left: 12px;
+  color: var(--pinyin);
+}
+
+.dom-renderer-content :where(pre, code) {
+  background: var(--surface);
+  border-radius: 4px;
+  font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+}
+.dom-renderer-content code { padding: 1px 4px; font-size: 0.9em; }
+.dom-renderer-content pre {
+  padding: 12px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+
+.dom-renderer-content a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.dom-renderer-content img {
+  max-width: 100%;
+  height: auto;
+}
+
+.dom-renderer-content table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.dom-renderer-content th,
+.dom-renderer-content td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+}
+
+.dom-renderer-content ul,
+.dom-renderer-content ol {
+  padding-left: 1.6em;
+}
+
+.dom-renderer-content.text-content {
+  font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+}
+
+/* ── Subtitle renderer ──────────────────────────────────────── */
+
+.dom-renderer-content.subtitle-content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.subtitle-cue {
+  border-left: 3px solid var(--accent);
+  padding: 8px 14px;
+  background: var(--surface);
+  border-radius: 0 6px 6px 0;
+}
+
+.subtitle-time {
+  display: block;
+  font-size: 0.78em;
+  color: var(--pinyin);
+  font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+  margin-bottom: 4px;
+}
+
+.subtitle-text {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.subtitle-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--pinyin);
+}
+
+/* ── PDF renderer ───────────────────────────────────────────── */
+
+.pdf-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 0;
+}
+
+.pdf-page {
+  position: relative;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  margin: 0 auto;
+}
+
+.pdf-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.pdf-text-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  opacity: 1;
+  line-height: 1;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  z-index: 1;
+}
+
+.pdf-text-layer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+
+.pdf-text-layer ::selection {
+  background: rgba(59, 130, 246, 0.35);
+}
+
+/* Dark theme: invert canvases so PDF pages match the surrounding
+   dark chrome. The text layer is transparent so it's untouched. */
+.pdf-container.pdf-dark .pdf-canvas {
+  filter: invert(1) hue-rotate(180deg);
+}
+
 /* ── Landing state ──────────────────────────────────────────── */
 
 .landing {

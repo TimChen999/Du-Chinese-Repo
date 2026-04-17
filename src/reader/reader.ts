@@ -404,8 +404,19 @@ function attachKeyHandler(
   });
 }
 
-// ─── Selection handling for epub.js renditions ─────────────────────
+// ─── Selection handling ────────────────────────────────────────────
 
+/**
+ * EPUB renders inside an iframe with its own document, so we wire
+ * epub.js's "selected" event and translate iframe-local coordinates
+ * to the reader-page coordinate space before showing the overlay.
+ *
+ * Every other format renders directly into #reader-content in the
+ * reader-page document, so the standard Selection API works without
+ * coordinate translation. That generic handler is attached once in
+ * initReader() (see attachGenericSelectionHandler) and is gated on
+ * `currentRenderer instanceof EpubRenderer === false`.
+ */
 function attachSelectionHandler(renderer: FormatRenderer): void {
   if (!(renderer instanceof EpubRenderer)) return;
   const rendition = renderer.getRendition();
@@ -439,6 +450,32 @@ function attachSelectionHandler(renderer: FormatRenderer): void {
   });
 }
 
+/**
+ * Single mouseup listener bound once in initReader(). Handles every
+ * non-EPUB renderer (text, markdown, HTML, DOCX, subtitles, PDF).
+ *
+ * Bound at the readerContent level rather than document so we don't
+ * fight the existing document-level mousedown listener that dismisses
+ * the overlay on outside clicks.
+ */
+function attachGenericSelectionHandler(els: ReturnType<typeof getElements>): void {
+  els.readerContent.addEventListener("mouseup", () => {
+    if (!currentRenderer) return;
+    if (currentRenderer instanceof EpubRenderer) return;
+    if (!readerSettings.pinyinEnabled) return;
+
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) return;
+
+    const text = selection.toString().trim();
+    if (!text || !containsChinese(text)) return;
+
+    const range = selection.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    processSelection(text, rect);
+  });
+}
+
 // ─── Core file loading ─────────────────────────────────────────────
 
 async function openFile(
@@ -466,7 +503,16 @@ async function openFile(
     saveFileHandle(currentFileHash, handle).catch(() => {});
   }
 
-  const metadata = await renderer.load(file);
+  let metadata: BookMetadata;
+  try {
+    metadata = await renderer.load(file);
+  } catch (err) {
+    currentRenderer = null;
+    currentFileHash = "";
+    const msg = err instanceof Error ? err.message : String(err);
+    alert(`Could not load "${file.name}":\n${msg}`);
+    return;
+  }
   currentMetadata = metadata;
 
   els.bookTitle.textContent = metadata.title;
@@ -671,6 +717,11 @@ export async function initReader(): Promise<void> {
 
   await renderRecentFiles(els);
 
+  // Bound once for the lifetime of the reader page; gated on the
+  // active renderer's type so EPUB's iframe-aware handler stays
+  // authoritative for that format.
+  attachGenericSelectionHandler(els);
+
   els.openFileBtn?.addEventListener("click", () => {
     goToLanding(els);
   });
@@ -684,7 +735,15 @@ export async function initReader(): Promise<void> {
         e.preventDefault();
         try {
           const [handle] = await window.showOpenFilePicker({
-            types: [{ description: "EPUB files", accept: { "application/epub+zip": [".epub"] } }],
+            types: [
+              { description: "EPUB files", accept: { "application/epub+zip": [".epub"] } },
+              { description: "PDF files", accept: { "application/pdf": [".pdf"] } },
+              { description: "Word documents", accept: { "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"] } },
+              { description: "Plain text", accept: { "text/plain": [".txt"] } },
+              { description: "Markdown", accept: { "text/markdown": [".md", ".markdown"] } },
+              { description: "HTML", accept: { "text/html": [".html", ".htm"] } },
+              { description: "Subtitles", accept: { "text/plain": [".srt", ".vtt", ".ass", ".ssa"] } },
+            ],
             multiple: false,
           });
           const file = await handle.getFile();

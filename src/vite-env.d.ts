@@ -3,6 +3,14 @@ declare module "*.css?inline" {
   export default css;
 }
 
+// Vite ?url suffix returns the resolved asset URL as a string. Used
+// by the PDF renderer to bootstrap pdf.js's worker without hard-
+// coding a path that would break across dev/build modes.
+declare module "*?url" {
+  const url: string;
+  export default url;
+}
+
 // ─── File System Access API ─────────────────────────────────────────
 // These APIs are available in Chromium browsers but not yet in the
 // standard DOM lib typings.

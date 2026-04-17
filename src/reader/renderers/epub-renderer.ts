@@ -11,20 +11,9 @@
 import ePub from "epubjs";
 import type { Book, Rendition, NavItem } from "epubjs";
 import type { FormatRenderer, BookMetadata, TocEntry, ReaderSettings } from "../reader-types";
+import { FONT_FAMILY_MAP, THEME_COLORS } from "./_shared/typography";
 
-export const FONT_FAMILY_MAP: Record<string, string> = {
-  "system": 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif',
-  "serif": 'Georgia, "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", SimSun, serif',
-  "sans-serif": 'system-ui, -apple-system, "Noto Sans CJK SC", "Source Han Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif',
-  "noto-sans": '"Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC", system-ui, sans-serif',
-  "noto-serif": '"Noto Serif SC", "Noto Serif CJK SC", "Source Han Serif SC", Georgia, serif',
-};
-
-export const THEME_COLORS: Record<string, { bg: string; text: string }> = {
-  light: { bg: "#ffffff", text: "#1a1a1a" },
-  dark: { bg: "#1a1a2e", text: "#e2e8f0" },
-  sepia: { bg: "#f4ecd8", text: "#5c4b37" },
-};
+export { FONT_FAMILY_MAP, THEME_COLORS };
 
 export class EpubRenderer implements FormatRenderer {
   readonly formatName = "EPUB";
