@@ -265,6 +265,7 @@ describe("content script", () => {
         expect.any(Object),
         "auto",
         true,
+        true,
       );
     });
 

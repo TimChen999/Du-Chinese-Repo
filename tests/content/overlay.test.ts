@@ -183,6 +183,27 @@ describe("overlay", () => {
       expect(loading!.textContent).toContain("Loading");
     });
 
+    it("shows loading indicator when llmEnabled is explicitly true", () => {
+      const words: WordData[] = [{ chars: "好", pinyin: "hǎo" }];
+      showOverlay(words, makeDOMRect(100, 200, 100, 20), "light", false, true);
+
+      const host = document.getElementById("hg-extension-root");
+      const translation = host!.shadowRoot!.querySelector(".hg-translation");
+      expect(translation).not.toBeNull();
+      expect(translation!.classList.contains("hg-loading")).toBe(true);
+    });
+
+    it("omits the translation row when llmEnabled is false", () => {
+      const words: WordData[] = [{ chars: "好", pinyin: "hǎo" }];
+      showOverlay(words, makeDOMRect(100, 200, 100, 20), "light", false, false);
+
+      const host = document.getElementById("hg-extension-root");
+      const translation = host!.shadowRoot!.querySelector(".hg-translation");
+      expect(translation).toBeNull();
+      // The pinyin row is still rendered.
+      expect(host!.shadowRoot!.querySelector(".hg-pinyin-row")).not.toBeNull();
+    });
+
     it("includes a close button", () => {
       const words: WordData[] = [{ chars: "好", pinyin: "hǎo" }];
       showOverlay(words, makeDOMRect(100, 200, 100, 20), "light");

@@ -68,6 +68,11 @@ export function createOverlay(): ShadowRoot {
  * Renders the Phase 1 overlay: ruby-annotated pinyin with a loading
  * indicator in the translation area (replaced by updateOverlay once
  * the LLM responds). Positions near the selection rect.
+ *
+ * When llmEnabled is false, the .hg-translation row is omitted
+ * entirely -- no Phase-2 message will ever arrive, so showing a
+ * permanent "Loading translation..." indicator would be misleading.
+ * The overlay collapses up around the pinyin row instead.
  * (SPEC.md Section 5 "Two-Phase Rendering", Phase 1)
  */
 export function showOverlay(
@@ -75,6 +80,7 @@ export function showOverlay(
   rect: DOMRect,
   theme: Theme,
   ttsEnabled = false,
+  llmEnabled = true,
 ): void {
   const root = createOverlay();
 
@@ -101,10 +107,12 @@ export function showOverlay(
   appendTtsButton(pinyinRow, words, ttsEnabled);
   overlay.appendChild(pinyinRow);
 
-  const translation = document.createElement("div");
-  translation.className = "hg-translation hg-loading";
-  translation.textContent = "Loading translation\u2026";
-  overlay.appendChild(translation);
+  if (llmEnabled) {
+    const translation = document.createElement("div");
+    translation.className = "hg-translation hg-loading";
+    translation.textContent = "Loading translation\u2026";
+    overlay.appendChild(translation);
+  }
 
   root.appendChild(overlay);
 

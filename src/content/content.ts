@@ -50,6 +50,13 @@ let cachedTheme: Theme = "auto";
 let cachedTtsEnabled = true;
 
 /**
+ * Cached AI Translations toggle. Mirrored on the content side so the
+ * Phase 1 overlay can omit the "Loading translation..." row when the
+ * service worker won't be sending Phase 2 anyway.
+ */
+let cachedLlmEnabled = true;
+
+/**
  * Cached "auto-show overlay on mouseup" toggle. When false, the
  * mouseup listener is a no-op so plain text selections do not pop
  * the overlay. The right-click menu item and Alt+Shift+P shortcut
@@ -191,7 +198,7 @@ function processSelection(text: string, rect: DOMRect, context: string): void {
     (response: PinyinResponseLocal) => {
       if (requestId !== currentRequestId) return;
       if (!response || response.type !== "PINYIN_RESPONSE_LOCAL") return;
-      showOverlay(response.words, rect, cachedTheme, cachedTtsEnabled);
+      showOverlay(response.words, rect, cachedTheme, cachedTtsEnabled, cachedLlmEnabled);
       if (wasTruncated) showTruncationNotice();
     },
   );
@@ -462,11 +469,12 @@ setVocabCallback((word) => {
  * need an async storage read.
  */
 chrome.storage.sync.get(
-  ["theme", "ttsEnabled", "overlayEnabled"],
+  ["theme", "ttsEnabled", "overlayEnabled", "llmEnabled"],
   (result) => {
     if (result.theme) cachedTheme = result.theme as Theme;
     if (result.ttsEnabled !== undefined) cachedTtsEnabled = result.ttsEnabled as boolean;
     if (result.overlayEnabled !== undefined) cachedOverlayEnabled = result.overlayEnabled as boolean;
+    if (result.llmEnabled !== undefined) cachedLlmEnabled = result.llmEnabled as boolean;
   },
 );
 
@@ -480,5 +488,8 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   }
   if (changes.overlayEnabled?.newValue !== undefined) {
     cachedOverlayEnabled = changes.overlayEnabled.newValue as boolean;
+  }
+  if (changes.llmEnabled?.newValue !== undefined) {
+    cachedLlmEnabled = changes.llmEnabled.newValue as boolean;
   }
 });
