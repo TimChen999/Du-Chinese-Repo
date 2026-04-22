@@ -73,6 +73,10 @@ export function createOverlay(): ShadowRoot {
  * entirely -- no Phase-2 message will ever arrive, so showing a
  * permanent "Loading translation..." indicator would be misleading.
  * The overlay collapses up around the pinyin row instead.
+ *
+ * fontSize controls the overlay's character size in px; pinyin and
+ * translation text are derived from it via CSS calc() multipliers in
+ * overlay.css. Defaults to 16 to match the historical hardcoded sizing.
  * (SPEC.md Section 5 "Two-Phase Rendering", Phase 1)
  */
 export function showOverlay(
@@ -81,8 +85,13 @@ export function showOverlay(
   theme: Theme,
   ttsEnabled = false,
   llmEnabled = true,
+  fontSize = 16,
 ): void {
   const root = createOverlay();
+
+  if (hostElement) {
+    hostElement.style.setProperty("--hg-font-size", `${fontSize}px`);
+  }
 
   const styleEl = root.querySelector("style");
   while (root.lastChild && root.lastChild !== styleEl) {

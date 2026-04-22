@@ -94,7 +94,7 @@
   cursor: pointer;
   padding: 2px 4px;
   border-radius: 4px;
-  font-size: 18px;
+  font-size: var(--hg-font-size, 16px);
   transition: background-color 150ms;
 }
 
@@ -103,7 +103,7 @@
 }
 
 .hg-overlay rt {
-  font-size: 12px;
+  font-size: calc(var(--hg-font-size, 16px) * 0.75);
   font-weight: normal;
 }
 
@@ -111,7 +111,7 @@
 .hg-translation {
   padding-top: 12px;
   border-top: 1px solid rgba(0, 0, 0, 0.1);
-  font-size: 14px;
+  font-size: calc(var(--hg-font-size, 16px) * 0.875);
   line-height: 1.5;
 }
 
@@ -122,7 +122,7 @@
   border-radius: 6px;
   background: rgba(59, 130, 246, 0.05);
   border-left: 3px solid #3b82f6;
-  font-size: 14px;
+  font-size: calc(var(--hg-font-size, 16px) * 0.875);
 }
 
 /* ─── Add to Vocab button (inside definition card) ────────────── */

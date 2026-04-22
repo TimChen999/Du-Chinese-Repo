@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach, afterAll } from "vitest";
-import { MAX_SELECTION_LENGTH, DEBOUNCE_MS } from "../../src/shared/constants";
+import { DEFAULT_SETTINGS, MAX_SELECTION_LENGTH, DEBOUNCE_MS } from "../../src/shared/constants";
 
 // ─── Mock overlay module so we can spy on calls without DOM side effects ──
 const mockShowOverlay = vi.fn();
@@ -266,6 +266,7 @@ describe("content script", () => {
         "auto",
         true,
         true,
+        DEFAULT_SETTINGS.fontSize,
       );
     });
 
@@ -479,6 +480,38 @@ describe("content script", () => {
           text: "你好",
         }),
         expect.any(Function),
+      );
+    });
+  });
+
+  // ─── fontSize cache ───────────────────────────────────────────
+  describe("fontSize cache", () => {
+    it("forwards an updated fontSize from chrome.storage.onChanged to showOverlay", () => {
+      storageChangeListener?.(
+        { fontSize: { newValue: 22 } },
+        "sync",
+      );
+
+      vi.spyOn(window, "getSelection").mockReturnValue(
+        fakeSelection("你好"),
+      );
+
+      document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+      vi.advanceTimersByTime(DEBOUNCE_MS + 50);
+
+      expect(mockShowOverlay).toHaveBeenCalledWith(
+        [{ chars: "你好", pinyin: "nǐ hǎo" }],
+        expect.any(Object),
+        "auto",
+        true,
+        true,
+        22,
+      );
+
+      // Reset to default so subsequent tests in other suites are unaffected.
+      storageChangeListener?.(
+        { fontSize: { newValue: DEFAULT_SETTINGS.fontSize } },
+        "sync",
       );
     });
   });

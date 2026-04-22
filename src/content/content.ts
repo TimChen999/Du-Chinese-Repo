@@ -18,6 +18,7 @@
 import { containsChinese, extractSurroundingContext } from "../shared/chinese-detect";
 import {
   DEBOUNCE_MS,
+  DEFAULT_SETTINGS,
   KEEPALIVE_PORT_NAME,
   LLM_TIMEOUT_MS,
   MAX_SELECTION_LENGTH,
@@ -65,6 +66,15 @@ let cachedLlmEnabled = true;
  * behavior on first install.
  */
 let cachedOverlayEnabled = true;
+
+/**
+ * Cached overlay font size (px). Mirrored on the content side so each
+ * showOverlay() call avoids a chrome.storage.sync round-trip. The value
+ * is forwarded to overlay.ts which sets it as a --hg-font-size CSS
+ * custom property on the Shadow DOM host; overlay.css derives pinyin
+ * and translation sizes from it via calc() multipliers.
+ */
+let cachedFontSize: number = DEFAULT_SETTINGS.fontSize;
 
 /** Viewport rect from the most recent OCR area selection, awaiting capture result. */
 let pendingOCRRect: { x: number; y: number; width: number; height: number } | null = null;
@@ -198,7 +208,14 @@ function processSelection(text: string, rect: DOMRect, context: string): void {
     (response: PinyinResponseLocal) => {
       if (requestId !== currentRequestId) return;
       if (!response || response.type !== "PINYIN_RESPONSE_LOCAL") return;
-      showOverlay(response.words, rect, cachedTheme, cachedTtsEnabled, cachedLlmEnabled);
+      showOverlay(
+        response.words,
+        rect,
+        cachedTheme,
+        cachedTtsEnabled,
+        cachedLlmEnabled,
+        cachedFontSize,
+      );
       if (wasTruncated) showTruncationNotice();
     },
   );
@@ -469,12 +486,13 @@ setVocabCallback((word) => {
  * need an async storage read.
  */
 chrome.storage.sync.get(
-  ["theme", "ttsEnabled", "overlayEnabled", "llmEnabled"],
+  ["theme", "ttsEnabled", "overlayEnabled", "llmEnabled", "fontSize"],
   (result) => {
     if (result.theme) cachedTheme = result.theme as Theme;
     if (result.ttsEnabled !== undefined) cachedTtsEnabled = result.ttsEnabled as boolean;
     if (result.overlayEnabled !== undefined) cachedOverlayEnabled = result.overlayEnabled as boolean;
     if (result.llmEnabled !== undefined) cachedLlmEnabled = result.llmEnabled as boolean;
+    if (typeof result.fontSize === "number") cachedFontSize = result.fontSize;
   },
 );
 
@@ -491,5 +509,8 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   }
   if (changes.llmEnabled?.newValue !== undefined) {
     cachedLlmEnabled = changes.llmEnabled.newValue as boolean;
+  }
+  if (typeof changes.fontSize?.newValue === "number") {
+    cachedFontSize = changes.fontSize.newValue;
   }
 });

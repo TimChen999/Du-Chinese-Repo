@@ -243,6 +243,34 @@ describe("overlay", () => {
     });
   });
 
+  // ─── font size ─────────────────────────────────────────────────
+  describe("font size", () => {
+    it("defaults to 16px on the host CSS variable", () => {
+      const words: WordData[] = [{ chars: "好", pinyin: "hǎo" }];
+      showOverlay(words, makeDOMRect(100, 200, 100, 20), "light");
+
+      const host = document.getElementById("hg-extension-root") as HTMLElement;
+      expect(host.style.getPropertyValue("--hg-font-size")).toBe("16px");
+    });
+
+    it("propagates the supplied fontSize to the host CSS variable", () => {
+      const words: WordData[] = [{ chars: "好", pinyin: "hǎo" }];
+      showOverlay(words, makeDOMRect(100, 200, 100, 20), "light", false, true, 22);
+
+      const host = document.getElementById("hg-extension-root") as HTMLElement;
+      expect(host.style.getPropertyValue("--hg-font-size")).toBe("22px");
+    });
+
+    it("updates the CSS variable when showOverlay is called again with a different fontSize", () => {
+      const words: WordData[] = [{ chars: "好", pinyin: "hǎo" }];
+      showOverlay(words, makeDOMRect(100, 200, 100, 20), "light", false, true, 14);
+      showOverlay(words, makeDOMRect(100, 200, 100, 20), "light", false, true, 20);
+
+      const host = document.getElementById("hg-extension-root") as HTMLElement;
+      expect(host.style.getPropertyValue("--hg-font-size")).toBe("20px");
+    });
+  });
+
   // ─── updateOverlay ─────────────────────────────────────────────
   describe("updateOverlay", () => {
     it("replaces loading indicator with translation text", () => {
