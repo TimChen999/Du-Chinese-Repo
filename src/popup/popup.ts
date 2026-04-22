@@ -26,6 +26,7 @@ function getElements() {
     provider: document.getElementById("provider") as HTMLSelectElement,
     apiKey: document.getElementById("api-key") as HTMLInputElement,
     apiKeyGroup: document.getElementById("api-key-group") as HTMLDivElement,
+    apiKeyWarning: document.getElementById("api-key-warning") as HTMLParagraphElement,
     toggleKey: document.getElementById("toggle-key") as HTMLButtonElement,
     baseUrl: document.getElementById("base-url") as HTMLInputElement,
     model: document.getElementById("model") as HTMLSelectElement,
@@ -39,6 +40,9 @@ function getElements() {
     llmEnabled: document.getElementById("llm-enabled") as HTMLInputElement,
     ttsEnabled: document.getElementById("tts-enabled") as HTMLInputElement,
     overlayEnabled: document.getElementById("overlay-enabled") as HTMLInputElement,
+    aiConfigFields: document.getElementById("ai-config-fields") as HTMLDivElement,
+    aiInfoBtn: document.getElementById("ai-info-btn") as HTMLButtonElement,
+    aiInfoPopover: document.getElementById("ai-info-popover") as HTMLDivElement,
     saveBtn: document.getElementById("save-btn") as HTMLButtonElement,
     status: document.getElementById("status") as HTMLDivElement,
     tabButtons: document.querySelectorAll<HTMLButtonElement>(".tab-btn"),
@@ -169,7 +173,9 @@ async function refreshModels(
 /**
  * When the user picks a new provider, auto-fill the base URL and
  * model list from PROVIDER_PRESETS (or live-fetch for Ollama), and
- * show/hide the API key field based on requiresApiKey.
+ * show/hide the API key field based on requiresApiKey. Also
+ * re-evaluates the inline API-key warning since requiresApiKey
+ * varies between providers.
  */
 async function onProviderChange(els: ReturnType<typeof getElements>): Promise<void> {
   const provider = els.provider.value as LLMProvider;
@@ -184,21 +190,68 @@ async function onProviderChange(els: ReturnType<typeof getElements>): Promise<vo
     els.apiKeyGroup.classList.add("hidden");
   }
 
+  updateApiKeyWarning(els);
+
   await refreshModels(els, provider, preset.defaultModel);
+}
+
+// ─── AI Translations toggle group ─────────────────────────────
+
+/**
+ * Shows the inline "API key required" warning only when AI
+ * Translations is on, the selected provider needs a key, and the
+ * key field is empty. Called on init, on apiKey input, on
+ * provider change, and when the toggle flips.
+ */
+function updateApiKeyWarning(els: ReturnType<typeof getElements>): void {
+  const provider = els.provider.value as LLMProvider;
+  const needs = PROVIDER_PRESETS[provider].requiresApiKey;
+  const empty = els.apiKey.value.trim().length === 0;
+  const show = els.llmEnabled.checked && needs && empty;
+  els.apiKeyWarning.classList.toggle("hidden", !show);
+}
+
+/**
+ * Collapses or expands the AI config fields container based on
+ * the toggle's checked state. Field values are intentionally not
+ * cleared so flipping the toggle off and back on preserves them.
+ */
+function applyLlmToggleState(els: ReturnType<typeof getElements>): void {
+  els.aiConfigFields.classList.toggle("hidden", !els.llmEnabled.checked);
+  updateApiKeyWarning(els);
+}
+
+/**
+ * Toggles the (i) info popover next to the AI Translations
+ * header. Mirrors visibility into aria-expanded for screen
+ * readers.
+ */
+function setInfoPopoverOpen(
+  els: ReturnType<typeof getElements>,
+  open: boolean,
+): void {
+  els.aiInfoPopover.classList.toggle("hidden", !open);
+  els.aiInfoBtn.setAttribute("aria-expanded", open ? "true" : "false");
 }
 
 // ─── Validation ─────────────────────────────────────────────────────
 
 /**
  * Returns an error string if inputs are invalid, or null if everything
- * checks out. Validates API key length for providers that require one,
- * and base URL prefix.
+ * checks out. Validates API key length for providers that require one
+ * (only when AI Translations is enabled -- a key is meaningless when
+ * the feature is off, and we still preserve any previously-entered
+ * value), and base URL prefix.
  */
 function validateInputs(els: ReturnType<typeof getElements>): string | null {
   const provider = els.provider.value as LLMProvider;
   const preset = PROVIDER_PRESETS[provider];
 
-  if (preset.requiresApiKey && els.apiKey.value.trim().length < 10) {
+  if (
+    els.llmEnabled.checked &&
+    preset.requiresApiKey &&
+    els.apiKey.value.trim().length < 10
+  ) {
     return "API key must be at least 10 characters for this provider.";
   }
 
@@ -384,6 +437,8 @@ export async function initPopup(): Promise<void> {
     els.apiKeyGroup.classList.add("hidden");
   }
 
+  applyLlmToggleState(els);
+
   await refreshModels(els, settings.provider, settings.model);
 
   // ─── OCR trigger ─────────────────────────────────────────────
@@ -427,6 +482,37 @@ export async function initPopup(): Promise<void> {
 
   els.fontSize.addEventListener("input", () => {
     els.fontSizeLabel.textContent = els.fontSize.value;
+  });
+
+  // ─── AI Translations toggle + warning + info popover ─────────
+
+  els.llmEnabled.addEventListener("change", () => applyLlmToggleState(els));
+
+  els.apiKey.addEventListener("input", () => updateApiKeyWarning(els));
+
+  els.aiInfoBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const open = els.aiInfoPopover.classList.contains("hidden");
+    setInfoPopoverOpen(els, open);
+  });
+
+  document.addEventListener("click", (e) => {
+    if (els.aiInfoPopover.classList.contains("hidden")) return;
+    const target = e.target as Node | null;
+    if (
+      target &&
+      !els.aiInfoPopover.contains(target) &&
+      target !== els.aiInfoBtn
+    ) {
+      setInfoPopoverOpen(els, false);
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !els.aiInfoPopover.classList.contains("hidden")) {
+      setInfoPopoverOpen(els, false);
+      els.aiInfoBtn.focus();
+    }
   });
 
   els.saveBtn.addEventListener("click", async () => {

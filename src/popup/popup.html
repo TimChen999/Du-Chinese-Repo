@@ -18,41 +18,93 @@
   </div>
 
   <div id="tab-settings">
-    <!-- LLM Provider -->
-    <div class="form-group">
-      <label for="provider">LLM Provider</label>
-      <select id="provider">
-        <option value="openai">OpenAI</option>
-        <option value="gemini">Google Gemini</option>
-        <option value="ollama">Ollama (local)</option>
-        <option value="custom">Custom</option>
-      </select>
-    </div>
+    <!-- AI Translations toggle group -->
+    <div class="ai-section">
+      <div class="ai-section-header">
+        <label class="switch-label" for="llm-enabled">
+          <input type="checkbox" id="llm-enabled" class="switch-input" />
+          <span class="switch-track" aria-hidden="true">
+            <span class="switch-thumb"></span>
+          </span>
+          <span class="switch-text">AI Translations</span>
+        </label>
+        <button
+          type="button"
+          id="ai-info-btn"
+          class="info-btn"
+          aria-label="About AI Translations"
+          aria-expanded="false"
+          aria-controls="ai-info-popover"
+        >i</button>
+        <div
+          id="ai-info-popover"
+          class="info-popover hidden"
+          role="tooltip"
+        >AI translations use an LLM (e.g. Gemini, OpenAI) to provide context-aware translations of selected text. Requires your own API key.</div>
+      </div>
 
-    <!-- API Key -->
-    <div class="form-group" id="api-key-group">
-      <label for="api-key">API Key</label>
-      <div class="input-row">
-        <input type="password" id="api-key" placeholder="Enter API key" />
-        <button type="button" id="toggle-key" title="Show/hide API key">Show</button>
+      <div id="ai-config-fields">
+        <!-- LLM Provider -->
+        <div class="form-group">
+          <label for="provider">LLM Provider</label>
+          <select id="provider">
+            <option value="openai">OpenAI</option>
+            <option value="gemini">Google Gemini</option>
+            <option value="ollama">Ollama (local)</option>
+            <option value="custom">Custom</option>
+          </select>
+        </div>
+
+        <!-- API Key -->
+        <div class="form-group" id="api-key-group">
+          <label for="api-key">API Key</label>
+          <div class="input-row">
+            <input type="password" id="api-key" placeholder="Enter API key" />
+            <button type="button" id="toggle-key" title="Show/hide API key">Show</button>
+          </div>
+        </div>
+
+        <!-- Base URL -->
+        <div class="form-group">
+          <label for="base-url">API Base URL</label>
+          <input type="text" id="base-url" placeholder="https://api.openai.com/v1" />
+        </div>
+
+        <!-- Model -->
+        <div class="form-group">
+          <label for="model">Model</label>
+          <div class="input-row">
+            <select id="model"></select>
+            <button type="button" id="refresh-models" class="hidden" title="Refresh model list">&#x21bb;</button>
+          </div>
+          <input type="text" id="custom-model" placeholder="Enter model name" class="hidden" />
+        </div>
+
+        <p id="api-key-warning" class="inline-warning hidden">API key required</p>
       </div>
     </div>
 
-    <!-- Base URL -->
-    <div class="form-group">
-      <label for="base-url">API Base URL</label>
-      <input type="text" id="base-url" placeholder="https://api.openai.com/v1" />
+    <!-- Lookup behavior (independent of AI) -->
+    <div class="lookup-behavior">
+      <!-- Auto-show Overlay -->
+      <div class="form-group checkbox-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="overlay-enabled" />
+          Auto-show overlay on text selection
+        </label>
+        <p class="setting-hint">When off, use the right-click menu or Alt+Shift+P to look up selected text on demand.</p>
+      </div>
+
+      <!-- TTS Mode -->
+      <div class="form-group checkbox-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="tts-enabled" />
+          Enable text-to-speech pronunciation
+        </label>
+      </div>
     </div>
 
-    <!-- Model -->
-    <div class="form-group">
-      <label for="model">Model</label>
-      <div class="input-row">
-        <select id="model"></select>
-        <button type="button" id="refresh-models" class="hidden" title="Refresh model list">&#x21bb;</button>
-      </div>
-      <input type="text" id="custom-model" placeholder="Enter model name" class="hidden" />
-    </div>
+    <hr class="section-divider" />
 
     <!-- Pinyin Style -->
     <div class="form-group">
@@ -87,31 +139,6 @@
         <option value="light">Light</option>
         <option value="dark">Dark</option>
       </select>
-    </div>
-
-    <!-- Auto-show Overlay -->
-    <div class="form-group checkbox-group">
-      <label class="checkbox-label">
-        <input type="checkbox" id="overlay-enabled" />
-        Auto-show overlay on text selection
-      </label>
-      <p class="setting-hint">When off, use the right-click menu or Alt+Shift+P to look up selected text on demand.</p>
-    </div>
-
-    <!-- LLM Mode -->
-    <div class="form-group checkbox-group">
-      <label class="checkbox-label">
-        <input type="checkbox" id="llm-enabled" />
-        Enable LLM-enhanced translations
-      </label>
-    </div>
-
-    <!-- TTS Mode -->
-    <div class="form-group checkbox-group">
-      <label class="checkbox-label">
-        <input type="checkbox" id="tts-enabled" />
-        Enable text-to-speech pronunciation
-      </label>
     </div>
 
     <button id="save-btn">Save Settings</button>

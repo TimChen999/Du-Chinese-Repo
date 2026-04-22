@@ -31,27 +31,54 @@ function buildPopupDOM(): void {
     </div>
 
     <div id="tab-settings">
-      <select id="provider">
-        <option value="openai">OpenAI</option>
-        <option value="gemini">Google Gemini</option>
-        <option value="ollama">Ollama (local)</option>
-        <option value="custom">Custom</option>
-      </select>
+      <div class="ai-section">
+        <div class="ai-section-header">
+          <label class="switch-label" for="llm-enabled">
+            <input type="checkbox" id="llm-enabled" class="switch-input" />
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+            <span class="switch-text">AI Translations</span>
+          </label>
+          <button type="button" id="ai-info-btn" class="info-btn"
+                  aria-label="About AI Translations" aria-expanded="false">i</button>
+          <div id="ai-info-popover" class="info-popover hidden" role="tooltip">
+            AI translations use an LLM (e.g. Gemini, OpenAI) to provide context-aware
+            translations of selected text. Requires your own API key.
+          </div>
+        </div>
 
-      <div id="api-key-group">
-        <div class="input-row">
-          <input type="password" id="api-key" />
-          <button id="toggle-key">Show</button>
+        <div id="ai-config-fields">
+          <select id="provider">
+            <option value="openai">OpenAI</option>
+            <option value="gemini">Google Gemini</option>
+            <option value="ollama">Ollama (local)</option>
+            <option value="custom">Custom</option>
+          </select>
+
+          <div id="api-key-group">
+            <div class="input-row">
+              <input type="password" id="api-key" />
+              <button id="toggle-key">Show</button>
+            </div>
+          </div>
+
+          <input type="text" id="base-url" />
+
+          <div class="input-row">
+            <select id="model"></select>
+            <button type="button" id="refresh-models" class="hidden">&#x21bb;</button>
+          </div>
+          <input type="text" id="custom-model" class="hidden" />
+
+          <p id="api-key-warning" class="inline-warning hidden">API key required</p>
         </div>
       </div>
 
-      <input type="text" id="base-url" />
-
-      <div class="input-row">
-        <select id="model"></select>
-        <button type="button" id="refresh-models" class="hidden">&#x21bb;</button>
+      <div class="lookup-behavior">
+        <input type="checkbox" id="overlay-enabled" />
+        <input type="checkbox" id="tts-enabled" />
       </div>
-      <input type="text" id="custom-model" class="hidden" />
+
+      <hr class="section-divider" />
 
       <label><input type="radio" name="pinyin-style" value="toneMarks" /></label>
       <label><input type="radio" name="pinyin-style" value="toneNumbers" /></label>
@@ -65,10 +92,6 @@ function buildPopupDOM(): void {
         <option value="light">Light</option>
         <option value="dark">Dark</option>
       </select>
-
-      <input type="checkbox" id="llm-enabled" />
-      <input type="checkbox" id="tts-enabled" />
-      <input type="checkbox" id="overlay-enabled" />
 
       <button id="save-btn">Save Settings</button>
       <div id="status"></div>
@@ -89,6 +112,7 @@ const el = {
   get provider() { return document.getElementById("provider") as HTMLSelectElement; },
   get apiKey() { return document.getElementById("api-key") as HTMLInputElement; },
   get apiKeyGroup() { return document.getElementById("api-key-group") as HTMLDivElement; },
+  get apiKeyWarning() { return document.getElementById("api-key-warning") as HTMLParagraphElement; },
   get toggleKey() { return document.getElementById("toggle-key") as HTMLButtonElement; },
   get baseUrl() { return document.getElementById("base-url") as HTMLInputElement; },
   get model() { return document.getElementById("model") as HTMLSelectElement; },
@@ -98,6 +122,9 @@ const el = {
   get theme() { return document.getElementById("theme") as HTMLSelectElement; },
   get llmEnabled() { return document.getElementById("llm-enabled") as HTMLInputElement; },
   get overlayEnabled() { return document.getElementById("overlay-enabled") as HTMLInputElement; },
+  get aiConfigFields() { return document.getElementById("ai-config-fields") as HTMLDivElement; },
+  get aiInfoBtn() { return document.getElementById("ai-info-btn") as HTMLButtonElement; },
+  get aiInfoPopover() { return document.getElementById("ai-info-popover") as HTMLDivElement; },
   get saveBtn() { return document.getElementById("save-btn") as HTMLButtonElement; },
   get status() { return document.getElementById("status") as HTMLDivElement; },
   pinyinRadio(value: string) {
@@ -536,6 +563,204 @@ describe("popup settings", () => {
           .filter((v) => v !== "__custom__");
         expect(modelOptions).toEqual(["alpha:3b", "mistral:7b", "zephyr:7b"]);
       });
+    });
+  });
+
+  // ─── AI Translations toggle group ──────────────────────────────
+
+  describe("AI Translations toggle group", () => {
+    it("collapses #ai-config-fields on init when stored llmEnabled is false", async () => {
+      chrome.storage.sync.get.mockImplementation(() =>
+        Promise.resolve({ llmEnabled: false }),
+      );
+
+      await loadPopup();
+
+      expect(el.llmEnabled.checked).toBe(false);
+      expect(el.aiConfigFields.classList.contains("hidden")).toBe(true);
+    });
+
+    it("expands #ai-config-fields on init when stored llmEnabled is true", async () => {
+      chrome.storage.sync.get.mockImplementation(() =>
+        Promise.resolve({ llmEnabled: true }),
+      );
+
+      await loadPopup();
+
+      expect(el.aiConfigFields.classList.contains("hidden")).toBe(false);
+    });
+
+    it("expands fields when toggle flips on", async () => {
+      chrome.storage.sync.get.mockImplementation(() =>
+        Promise.resolve({ llmEnabled: false }),
+      );
+
+      await loadPopup();
+      expect(el.aiConfigFields.classList.contains("hidden")).toBe(true);
+
+      el.llmEnabled.checked = true;
+      el.llmEnabled.dispatchEvent(new Event("change"));
+
+      expect(el.aiConfigFields.classList.contains("hidden")).toBe(false);
+    });
+
+    it("preserves field values when toggled off then on (no clearing)", async () => {
+      chrome.storage.sync.get.mockImplementation(() =>
+        Promise.resolve({
+          provider: "gemini",
+          apiKey: "AIza-preserved-key-12345",
+          baseUrl: "https://generativelanguage.googleapis.com",
+          model: "gemini-2.5-flash",
+          llmEnabled: true,
+        }),
+      );
+
+      await loadPopup();
+
+      const beforeApiKey = el.apiKey.value;
+      const beforeBaseUrl = el.baseUrl.value;
+      const beforeModel = el.model.value;
+      const beforeProvider = el.provider.value;
+
+      el.llmEnabled.checked = false;
+      el.llmEnabled.dispatchEvent(new Event("change"));
+      expect(el.aiConfigFields.classList.contains("hidden")).toBe(true);
+
+      el.llmEnabled.checked = true;
+      el.llmEnabled.dispatchEvent(new Event("change"));
+
+      expect(el.apiKey.value).toBe(beforeApiKey);
+      expect(el.baseUrl.value).toBe(beforeBaseUrl);
+      expect(el.model.value).toBe(beforeModel);
+      expect(el.provider.value).toBe(beforeProvider);
+    });
+
+    it("shows API key warning when toggle is ON, provider needs key, and key is empty", async () => {
+      await loadPopup();
+
+      // Default settings: llmEnabled true, provider openai (requires key), key empty.
+      expect(el.apiKey.value).toBe("");
+      expect(el.apiKeyWarning.classList.contains("hidden")).toBe(false);
+    });
+
+    it("hides API key warning when key is typed", async () => {
+      await loadPopup();
+      expect(el.apiKeyWarning.classList.contains("hidden")).toBe(false);
+
+      el.apiKey.value = "sk-some-key-value";
+      el.apiKey.dispatchEvent(new Event("input"));
+
+      expect(el.apiKeyWarning.classList.contains("hidden")).toBe(true);
+    });
+
+    it("hides API key warning when toggle is off, even with empty key", async () => {
+      chrome.storage.sync.get.mockImplementation(() =>
+        Promise.resolve({ llmEnabled: false, apiKey: "" }),
+      );
+
+      await loadPopup();
+
+      expect(el.apiKeyWarning.classList.contains("hidden")).toBe(true);
+    });
+
+    it("hides API key warning when provider switches to one that does not need a key", async () => {
+      await loadPopup();
+      expect(el.apiKeyWarning.classList.contains("hidden")).toBe(false);
+
+      el.provider.value = "ollama";
+      el.provider.dispatchEvent(new Event("change"));
+
+      expect(el.apiKeyWarning.classList.contains("hidden")).toBe(true);
+    });
+
+    it("re-shows API key warning when toggling back on while key is still empty", async () => {
+      chrome.storage.sync.get.mockImplementation(() =>
+        Promise.resolve({ llmEnabled: false, apiKey: "" }),
+      );
+
+      await loadPopup();
+      expect(el.apiKeyWarning.classList.contains("hidden")).toBe(true);
+
+      el.llmEnabled.checked = true;
+      el.llmEnabled.dispatchEvent(new Event("change"));
+
+      expect(el.apiKeyWarning.classList.contains("hidden")).toBe(false);
+    });
+
+    it("saves successfully with empty API key when toggle is off (validation skipped)", async () => {
+      await loadPopup();
+
+      el.llmEnabled.checked = false;
+      el.llmEnabled.dispatchEvent(new Event("change"));
+      el.apiKey.value = "";
+      el.saveBtn.click();
+
+      await vi.waitFor(() =>
+        expect(chrome.storage.sync.set).toHaveBeenCalled(),
+      );
+
+      const saved = chrome.storage.sync.set.mock.calls[0][0];
+      expect(saved.llmEnabled).toBe(false);
+      expect(el.status.textContent).toBe("Settings saved.");
+    });
+
+    it("still validates API key when toggle is on (existing behavior preserved)", async () => {
+      await loadPopup();
+
+      // llmEnabled defaults to true; provider openai requires a key.
+      el.apiKey.value = "abc";
+      el.saveBtn.click();
+
+      await vi.waitFor(() =>
+        expect(el.status.textContent).toContain("API key must be"),
+      );
+      expect(chrome.storage.sync.set).not.toHaveBeenCalled();
+    });
+
+    it("info popover toggles open/closed on info button click", async () => {
+      await loadPopup();
+
+      expect(el.aiInfoPopover.classList.contains("hidden")).toBe(true);
+      expect(el.aiInfoBtn.getAttribute("aria-expanded")).toBe("false");
+
+      el.aiInfoBtn.click();
+      expect(el.aiInfoPopover.classList.contains("hidden")).toBe(false);
+      expect(el.aiInfoBtn.getAttribute("aria-expanded")).toBe("true");
+
+      el.aiInfoBtn.click();
+      expect(el.aiInfoPopover.classList.contains("hidden")).toBe(true);
+      expect(el.aiInfoBtn.getAttribute("aria-expanded")).toBe("false");
+    });
+
+    it("info popover closes on outside click", async () => {
+      await loadPopup();
+      el.aiInfoBtn.click();
+      expect(el.aiInfoPopover.classList.contains("hidden")).toBe(false);
+
+      document.body.click();
+
+      expect(el.aiInfoPopover.classList.contains("hidden")).toBe(true);
+      expect(el.aiInfoBtn.getAttribute("aria-expanded")).toBe("false");
+    });
+
+    it("info popover stays open when clicking inside it", async () => {
+      await loadPopup();
+      el.aiInfoBtn.click();
+      expect(el.aiInfoPopover.classList.contains("hidden")).toBe(false);
+
+      el.aiInfoPopover.click();
+
+      expect(el.aiInfoPopover.classList.contains("hidden")).toBe(false);
+    });
+
+    it("info popover closes on Escape key", async () => {
+      await loadPopup();
+      el.aiInfoBtn.click();
+      expect(el.aiInfoPopover.classList.contains("hidden")).toBe(false);
+
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+
+      expect(el.aiInfoPopover.classList.contains("hidden")).toBe(true);
     });
   });
 });

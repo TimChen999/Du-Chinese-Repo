@@ -47,27 +47,54 @@ function buildPopupDOM(): void {
     </div>
 
     <div id="tab-settings">
-      <select id="provider">
-        <option value="openai">OpenAI</option>
-        <option value="gemini">Google Gemini</option>
-        <option value="ollama">Ollama (local)</option>
-        <option value="custom">Custom</option>
-      </select>
+      <div class="ai-section">
+        <div class="ai-section-header">
+          <label class="switch-label" for="llm-enabled">
+            <input type="checkbox" id="llm-enabled" class="switch-input" />
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+            <span class="switch-text">AI Translations</span>
+          </label>
+          <button type="button" id="ai-info-btn" class="info-btn"
+                  aria-label="About AI Translations" aria-expanded="false">i</button>
+          <div id="ai-info-popover" class="info-popover hidden" role="tooltip">
+            AI translations use an LLM (e.g. Gemini, OpenAI) to provide context-aware
+            translations of selected text. Requires your own API key.
+          </div>
+        </div>
 
-      <div id="api-key-group">
-        <div class="input-row">
-          <input type="password" id="api-key" />
-          <button id="toggle-key">Show</button>
+        <div id="ai-config-fields">
+          <select id="provider">
+            <option value="openai">OpenAI</option>
+            <option value="gemini">Google Gemini</option>
+            <option value="ollama">Ollama (local)</option>
+            <option value="custom">Custom</option>
+          </select>
+
+          <div id="api-key-group">
+            <div class="input-row">
+              <input type="password" id="api-key" />
+              <button id="toggle-key">Show</button>
+            </div>
+          </div>
+
+          <input type="text" id="base-url" />
+
+          <div class="input-row">
+            <select id="model"></select>
+            <button type="button" id="refresh-models" class="hidden">&#x21bb;</button>
+          </div>
+          <input type="text" id="custom-model" class="hidden" />
+
+          <p id="api-key-warning" class="inline-warning hidden">API key required</p>
         </div>
       </div>
 
-      <input type="text" id="base-url" />
-
-      <div class="input-row">
-        <select id="model"></select>
-        <button type="button" id="refresh-models" class="hidden">&#x21bb;</button>
+      <div class="lookup-behavior">
+        <input type="checkbox" id="overlay-enabled" />
+        <input type="checkbox" id="tts-enabled" />
       </div>
-      <input type="text" id="custom-model" class="hidden" />
+
+      <hr class="section-divider" />
 
       <label><input type="radio" name="pinyin-style" value="toneMarks" /></label>
       <label><input type="radio" name="pinyin-style" value="toneNumbers" /></label>
@@ -81,10 +108,6 @@ function buildPopupDOM(): void {
         <option value="light">Light</option>
         <option value="dark">Dark</option>
       </select>
-
-      <input type="checkbox" id="llm-enabled" />
-      <input type="checkbox" id="tts-enabled" />
-      <input type="checkbox" id="overlay-enabled" />
 
       <button id="save-btn">Save Settings</button>
       <div id="status"></div>
