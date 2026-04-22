@@ -450,7 +450,14 @@ async function processSelection(
   const anchor = currentRenderer?.captureAnchor();
   if (anchor) lastCapturedAnchor = anchor;
 
-  showOverlay(words, rect, settings.theme, settings.ttsEnabled, settings.llmEnabled);
+  showOverlay(
+    words,
+    rect,
+    settings.theme,
+    settings.ttsEnabled,
+    settings.llmEnabled,
+    settings.fontSize,
+  );
 
   if (!settings.llmEnabled || !readerSettings.pinyinEnabled) return;
 
