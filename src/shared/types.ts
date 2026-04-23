@@ -14,8 +14,16 @@
 /** User's choice of pinyin annotation format. (SPEC.md Section 2.4) */
 export type PinyinStyle = "toneMarks" | "toneNumbers" | "none";
 
-/** Overlay color scheme. "auto" follows the OS prefers-color-scheme. (SPEC.md Section 7) */
-export type Theme = "light" | "dark" | "auto";
+/**
+ * Color scheme shared by the popup, in-page overlay, library shell,
+ * hub, and reader. "auto" follows prefers-color-scheme; "sepia" is
+ * the e-reader-style cream/brown palette.
+ *
+ * Sepia used to be reader-only (it's the classic long-reading
+ * palette) but it's now exposed everywhere so a single shared theme
+ * value drives every surface consistently. (SPEC.md Section 7)
+ */
+export type Theme = "light" | "dark" | "sepia" | "auto";
 
 /** Supported LLM backends. Each maps to a ProviderPreset in constants.ts. (SPEC.md Section 6) */
 export type LLMProvider = "openai" | "gemini" | "ollama" | "custom";

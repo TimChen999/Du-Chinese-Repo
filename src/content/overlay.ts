@@ -343,9 +343,17 @@ function appendTtsBtnElement(pinyinRow: Element, words: WordData[]): void {
 
 // ─── Internal helpers ──────────────────────────────────────────────
 
-/** Resolves "auto" theme to concrete "light" or "dark" via matchMedia. */
-function resolveTheme(theme: Theme): "light" | "dark" {
-  if (theme === "light" || theme === "dark") return theme;
+/**
+ * Resolves the user's Theme preference to a concrete CSS class
+ * suffix used on .hg-overlay (.hg-light / .hg-dark / .hg-sepia).
+ *
+ * "auto" collapses via prefers-color-scheme between light and dark
+ * (sepia is never an OS-driven default). Sepia is now a fully shared
+ * theme value -- when set, the in-page overlay tints to match the
+ * popup, library, and reader.
+ */
+function resolveTheme(theme: Theme): "light" | "dark" | "sepia" {
+  if (theme === "light" || theme === "dark" || theme === "sepia") return theme;
   return window.matchMedia("(prefers-color-scheme: dark)").matches
     ? "dark"
     : "light";

@@ -414,15 +414,17 @@ describe("reader", () => {
       expect(stored[THEME_MIGRATION_FLAG]).toBe(true);
     });
 
-    it("leaves a sepia reader theme alone (sepia is reader-only)", async () => {
+    it("promotes a 'sepia' reader theme into the shared key now that sepia is shared", async () => {
       const stored = buildStorage({
         readerSettings: { theme: "sepia" },
       });
 
       await migrateThemeIfNeeded();
 
-      expect(stored.theme).toBeUndefined();
-      expect(stored.readerSettings.theme).toBe("sepia");
+      // Sepia used to be a reader-only override; it's now selectable
+      // from the popup too, so the shared key is its rightful home.
+      expect(stored.theme).toBe("sepia");
+      expect(stored.readerSettings.theme).toBe("auto");
       expect(stored[THEME_MIGRATION_FLAG]).toBe(true);
     });
 

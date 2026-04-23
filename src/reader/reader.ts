@@ -301,25 +301,35 @@ async function getExtensionSettings(): Promise<ExtensionSettings> {
   return { ...DEFAULT_SETTINGS, ...stored };
 }
 
-/** Reads only the canonical light/dark/auto theme key from storage. */
+/** Reads only the canonical theme key from storage (light/dark/sepia/auto). */
 async function loadSharedTheme(): Promise<ExtensionSettings["theme"]> {
   const stored = await chrome.storage.sync.get("theme");
   const value = stored.theme;
-  if (value === "light" || value === "dark" || value === "auto") {
+  if (
+    value === "light" ||
+    value === "dark" ||
+    value === "sepia" ||
+    value === "auto"
+  ) {
     return value;
   }
   return DEFAULT_SETTINGS.theme;
 }
 
 /**
- * One-shot migration: promote a non-sepia readerSettings.theme
- * (legacy data from when the reader's theme was independent) up to
- * the canonical shared `theme` key so existing users don't perceive
- * a silent reset to "auto" after the popup and reader started
- * sharing the value. Idempotent via THEME_MIGRATION_FLAG.
+ * One-shot migration: promote any readerSettings.theme (legacy data
+ * from when the reader's theme was independent, or sepia was a
+ * reader-only override) up to the canonical shared `theme` key so
+ * existing users don't perceive a silent reset to "auto" after the
+ * popup, overlay, and reader unified onto a single theme value.
+ * Idempotent via THEME_MIGRATION_FLAG.
  *
  * Only promotes when the shared key is at default ("auto") -- if the
  * user has already explicitly chosen a shared theme, that wins.
+ *
+ * Sepia is included because, as of this build, sepia is selectable
+ * from the popup too, so it belongs in the shared key alongside
+ * light/dark/auto.
  *
  * Exported so the library shell can run this before initReader/
  * applyCanonicalTheme so the first paint reflects the migrated value.
@@ -337,7 +347,10 @@ export async function migrateThemeIfNeeded(): Promise<void> {
   const readerTheme = reader?.theme;
   const sharedIsDefault = !sharedTheme || sharedTheme === "auto";
 
-  if ((readerTheme === "light" || readerTheme === "dark") && sharedIsDefault) {
+  if (
+    (readerTheme === "light" || readerTheme === "dark" || readerTheme === "sepia") &&
+    sharedIsDefault
+  ) {
     await chrome.storage.sync.set({
       theme: readerTheme,
       readerSettings: { ...reader, theme: "auto" },
@@ -1208,7 +1221,12 @@ export async function initReader(): Promise<void> {
       const change = changes.theme;
       if (!change) return;
       const next = change.newValue;
-      if (next === "light" || next === "dark" || next === "auto") {
+      if (
+        next === "light" ||
+        next === "dark" ||
+        next === "sepia" ||
+        next === "auto"
+      ) {
         currentSharedTheme = next;
       } else if (next === undefined) {
         currentSharedTheme = DEFAULT_SETTINGS.theme;
@@ -1220,7 +1238,9 @@ export async function initReader(): Promise<void> {
       // Re-apply the renderer's settings so format-specific theming
       // (PDF dark inversion, EPUB iframe colors) flips along with
       // the rest of the page when the popup writes a new value.
-      if (currentRenderer && readerSettings.theme !== "sepia") {
+      // effectiveReaderSettings() folds in the legacy sepia override
+      // so pre-migration data still wins over the shared key.
+      if (currentRenderer) {
         currentRenderer.applySettings(effectiveReaderSettings());
       }
     };
@@ -1410,9 +1430,11 @@ export async function initReader(): Promise<void> {
 
     els.settingsPanel.classList.add("hidden");
     await saveReaderSettings(readerSettings);
-    // When the user picked a non-sepia theme from the reader, that
-    // value belongs in the shared key so the popup, overlay, and hub
-    // all follow. Sepia stays reader-local (pickedShared === null).
+    // The picked dropdown value (light/dark/sepia/auto) is the
+    // canonical theme for every surface, so persist it to the shared
+    // key. partitionDropdownTheme always returns a non-null value
+    // now that sepia is shared, but we keep the type guard to stay
+    // forward-compatible with any future reader-only override.
     if (pickedShared !== null) {
       await chrome.storage.sync.set({ theme: pickedShared });
     }

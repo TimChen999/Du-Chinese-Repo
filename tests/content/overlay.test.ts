@@ -173,6 +173,19 @@ describe("overlay", () => {
       expect(overlay!.classList.contains("hg-dark")).toBe(true);
     });
 
+    it("applies the sepia theme class", () => {
+      // Sepia is now exposed in the popup too, so the in-page overlay
+      // must paint itself sepia when the shared theme is set to it.
+      const words: WordData[] = [{ chars: "好", pinyin: "hǎo" }];
+      showOverlay(words, makeDOMRect(100, 200, 100, 20), "sepia");
+
+      const host = document.getElementById("hg-extension-root");
+      const overlay = host!.shadowRoot!.querySelector(".hg-overlay");
+      expect(overlay!.classList.contains("hg-sepia")).toBe(true);
+      expect(overlay!.classList.contains("hg-light")).toBe(false);
+      expect(overlay!.classList.contains("hg-dark")).toBe(false);
+    });
+
     it("shows loading indicator in the translation area", () => {
       const words: WordData[] = [{ chars: "好", pinyin: "hǎo" }];
       showOverlay(words, makeDOMRect(100, 200, 100, 20), "light");

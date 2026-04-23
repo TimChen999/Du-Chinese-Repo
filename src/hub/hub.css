@@ -977,3 +977,176 @@ body[data-theme="dark"] .fc-close-btn:hover {
   body[data-theme="auto"] .fc-close-btn { color: #6b7280; }
   body[data-theme="auto"] .fc-close-btn:hover { color: #d1d5db; background: #374151; }
 }
+
+/* ─── Sepia mode ─────────────────────────────────────────────────── */
+/* Cream/brown palette aligned with reader.css and library.css so the
+   hub matches when the user picks Sepia. Mirrors the dark-mode block
+   above; only colors change. */
+
+body[data-theme="sepia"] {
+  background: #f4ecd8;
+  color: #5c4b37;
+}
+
+body[data-theme="sepia"] .hub-header {
+  background: #efe6d0;
+  border-bottom-color: #d4c8ab;
+}
+
+body[data-theme="sepia"] .reader-btn {
+  background: #b8860b;
+  color: #fffaf0;
+}
+
+body[data-theme="sepia"] .reader-btn:hover {
+  background: #9c7209;
+}
+
+body[data-theme="sepia"] .hub-tab-bar {
+  background: #efe6d0;
+  border-bottom-color: #d4c8ab;
+}
+
+body[data-theme="sepia"] .hub-tab {
+  color: #8b7355;
+}
+
+body[data-theme="sepia"] .hub-tab.active {
+  color: #b8860b;
+  border-bottom-color: #b8860b;
+}
+
+body[data-theme="sepia"] .hub-tab:hover:not(.active) {
+  color: #5c4b37;
+}
+
+body[data-theme="sepia"] .vocab-controls select {
+  background: #ede4cf;
+  color: #5c4b37;
+  border-color: #d4c8ab;
+}
+
+body[data-theme="sepia"] .vocab-controls select:focus {
+  border-color: #b8860b;
+  box-shadow: 0 0 0 2px rgba(184, 134, 11, 0.2);
+}
+
+body[data-theme="sepia"] .clear-btn {
+  background: #ede4cf;
+  border-color: #d4c8ab;
+  color: #5c4b37;
+}
+
+body[data-theme="sepia"] .clear-btn:hover {
+  background: #f5d6cb;
+  border-color: #c2856a;
+  color: #92400e;
+}
+
+body[data-theme="sepia"] .io-btn {
+  background: #ede4cf;
+  border-color: #d4c8ab;
+  color: #5c4b37;
+}
+
+body[data-theme="sepia"] .io-btn:hover {
+  background: #e8d8b1;
+  border-color: #b8860b;
+  color: #b8860b;
+}
+
+body[data-theme="sepia"] .io-status.success { color: #15803d; }
+body[data-theme="sepia"] .io-status.error { color: #b91c1c; }
+
+body[data-theme="sepia"] .vocab-row { border-bottom-color: #e2d6b6; }
+body[data-theme="sepia"] .vocab-row:hover { background: #ede4cf; }
+body[data-theme="sepia"] .vocab-pinyin { color: #8b7355; }
+body[data-theme="sepia"] .vocab-def { color: #5c4b37; }
+body[data-theme="sepia"] .vocab-row-meta { color: #8b7355; }
+body[data-theme="sepia"] .vocab-empty { color: #8b7355; }
+
+body[data-theme="sepia"] .vocab-card {
+  background: #f4ecd8;
+  box-shadow: 0 8px 32px rgba(92, 75, 55, 0.25);
+}
+body[data-theme="sepia"] .vocab-card-close { color: #8b7355; }
+body[data-theme="sepia"] .vocab-card-close:hover { color: #5c4b37; background: #ede4cf; }
+body[data-theme="sepia"] .vocab-card-chars { color: #5c4b37; }
+body[data-theme="sepia"] .vocab-card-pinyin { color: #8b7355; }
+body[data-theme="sepia"] .vocab-card-def { color: #5c4b37; }
+body[data-theme="sepia"] .vocab-card-meta { color: #8b7355; }
+body[data-theme="sepia"] .vocab-card-delete {
+  background: #f5d6cb;
+  border-color: #c2856a;
+  color: #92400e;
+}
+body[data-theme="sepia"] .vocab-card-delete:hover {
+  background: #f0c4b4;
+  border-color: #a0664f;
+}
+
+body[data-theme="sepia"] .fc-card {
+  background: #f4ecd8;
+  border-color: #d4c8ab;
+}
+body[data-theme="sepia"] .fc-chars { color: #5c4b37; }
+body[data-theme="sepia"] .fc-pinyin { color: #8b7355; }
+body[data-theme="sepia"] .fc-definition { color: #5c4b37; }
+
+body[data-theme="sepia"] .fc-size-btn {
+  background: #f4ecd8;
+  border-color: #d4c8ab;
+  color: #5c4b37;
+}
+body[data-theme="sepia"] .fc-size-btn:hover { border-color: #b8860b; color: #b8860b; }
+body[data-theme="sepia"] .fc-size-btn.selected {
+  background: #b8860b;
+  color: #fffaf0;
+  border-color: #b8860b;
+}
+
+body[data-theme="sepia"] .fc-flip-btn {
+  background: #f4ecd8;
+  border-color: #d4c8ab;
+  color: #5c4b37;
+}
+body[data-theme="sepia"] .fc-flip-btn:hover { border-color: #b8860b; color: #b8860b; }
+
+body[data-theme="sepia"] .fc-wrong-btn {
+  background: #fef0eb;
+  border-color: #c2856a;
+  color: #92400e;
+}
+body[data-theme="sepia"] .fc-wrong-btn:hover { background: #f5d6cb; }
+
+body[data-theme="sepia"] .fc-right-btn {
+  background: #ecfdf5;
+  border-color: #15803d;
+  color: #166534;
+}
+body[data-theme="sepia"] .fc-right-btn:hover { background: #d1fae5; }
+
+body[data-theme="sepia"] .fc-score { color: #5c4b37; }
+body[data-theme="sepia"] .fc-wrong-list h3 { color: #5c4b37; }
+body[data-theme="sepia"] .fc-wrong-item { border-bottom-color: #e2d6b6; }
+body[data-theme="sepia"] .fc-wrong-item-def { color: #5c4b37; }
+
+body[data-theme="sepia"] .fc-back-btn {
+  background: #f4ecd8;
+  border-color: #d4c8ab;
+  color: #5c4b37;
+}
+body[data-theme="sepia"] .fc-back-btn:hover { background: #ede4cf; }
+
+body[data-theme="sepia"] .fc-start-btn,
+body[data-theme="sepia"] .fc-again-btn {
+  background: #b8860b;
+  color: #fffaf0;
+}
+body[data-theme="sepia"] .fc-start-btn:hover:not(:disabled),
+body[data-theme="sepia"] .fc-again-btn:hover { background: #9c7209; }
+
+body[data-theme="sepia"] .fc-prompt { color: #8b7355; }
+body[data-theme="sepia"] .fc-available { color: #8b7355; }
+body[data-theme="sepia"] .fc-close-btn { color: #8b7355; }
+body[data-theme="sepia"] .fc-close-btn:hover { color: #5c4b37; background: #ede4cf; }

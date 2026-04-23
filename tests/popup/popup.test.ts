@@ -91,6 +91,7 @@ function buildPopupDOM(): void {
         <option value="auto">Auto</option>
         <option value="light">Light</option>
         <option value="dark">Dark</option>
+        <option value="sepia">Sepia</option>
       </select>
 
       <button id="save-btn">Save Settings</button>
@@ -791,6 +792,38 @@ describe("popup settings", () => {
       await loadPopup();
 
       expect(document.body.getAttribute("data-theme")).toBe("dark");
+    });
+
+    it("writes data-theme=sepia on body when stored theme is 'sepia'", async () => {
+      // Sepia is now a selectable shared theme, not just a reader-
+      // only override, so the popup must paint itself sepia too.
+      chrome.storage.sync.get.mockImplementation(() =>
+        Promise.resolve({ theme: "sepia" }),
+      );
+
+      await loadPopup();
+
+      expect(document.body.getAttribute("data-theme")).toBe("sepia");
+      expect(el.theme.value).toBe("sepia");
+    });
+
+    it("persists Sepia from the popup dropdown to the shared theme key", async () => {
+      chrome.storage.sync.get.mockImplementation(() =>
+        Promise.resolve({ theme: "light", apiKey: "sk-valid-test-key-123" }),
+      );
+
+      await loadPopup();
+      expect(document.body.getAttribute("data-theme")).toBe("light");
+
+      el.theme.value = "sepia";
+      el.saveBtn.click();
+
+      await vi.waitFor(() =>
+        expect(chrome.storage.sync.set).toHaveBeenCalled(),
+      );
+      const saved = chrome.storage.sync.set.mock.calls[0][0];
+      expect(saved.theme).toBe("sepia");
+      expect(document.body.getAttribute("data-theme")).toBe("sepia");
     });
 
     it("resolves auto to light when matchMedia is unavailable", async () => {

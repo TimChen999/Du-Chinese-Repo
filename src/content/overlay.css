@@ -2,7 +2,8 @@
  * Overlay styles -- injected into the Shadow DOM so they never leak
  * into or conflict with the host page's CSS.
  *
- * Theming: .hg-light / .hg-dark on .hg-overlay; "auto" resolved in JS.
+ * Theming: .hg-light / .hg-dark / .hg-sepia on .hg-overlay; "auto"
+ *          resolved in JS via prefers-color-scheme.
  * Layout:  ruby/rt for pinyin annotations, flex row for word flow.
  * Spec:    SPEC.md Section 7 "UI/UX Design", Step 7.2 CSS listing.
  */
@@ -211,6 +212,69 @@
 
 .hg-overlay.hg-dark .hg-tts-btn:hover {
   background: rgba(96, 165, 250, 0.3);
+}
+
+/* ─── Sepia theme ─────────────────────────────────────────────── */
+/* Cream/brown palette matching reader.css's body[data-theme="sepia"]
+   so the in-page overlay tints consistently with the rest of the
+   extension. Accent uses the same goldenrod brown as the reader's
+   --accent variable. */
+.hg-overlay.hg-sepia {
+  background: rgba(244, 236, 216, 0.97);
+  color: #5c4b37;
+  backdrop-filter: blur(8px);
+}
+
+.hg-overlay.hg-sepia rt {
+  color: #8b7355;
+}
+
+.hg-overlay.hg-sepia .hg-translation {
+  color: #5c4b37;
+  border-top-color: rgba(92, 75, 55, 0.18);
+}
+
+.hg-overlay.hg-sepia .hg-close-btn {
+  color: #8b7355;
+}
+
+.hg-overlay.hg-sepia .hg-close-btn:hover {
+  background: rgba(92, 75, 55, 0.08);
+  color: #5c4b37;
+}
+
+.hg-overlay.hg-sepia ruby:hover {
+  background: rgba(184, 134, 11, 0.15);
+}
+
+.hg-overlay.hg-sepia .hg-definition-card {
+  background: rgba(184, 134, 11, 0.1);
+  border-left-color: #b8860b;
+}
+
+.hg-overlay.hg-sepia .hg-add-vocab-btn {
+  border-color: #b8860b;
+  color: #b8860b;
+}
+
+.hg-overlay.hg-sepia .hg-add-vocab-btn:hover {
+  background: #b8860b;
+  color: #fffaf0;
+}
+
+.hg-overlay.hg-sepia .hg-add-vocab-btn.hg-added {
+  background: #16a34a;
+  border-color: #16a34a;
+  color: #fffaf0;
+}
+
+.hg-overlay.hg-sepia .hg-tts-btn {
+  background: rgba(184, 134, 11, 0.15);
+  color: #b8860b;
+}
+
+.hg-overlay.hg-sepia .hg-tts-btn:hover {
+  background: rgba(184, 134, 11, 0.3);
 }
 
 .hg-tts-btn.hg-tts-speaking {

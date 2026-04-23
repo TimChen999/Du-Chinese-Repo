@@ -2,23 +2,17 @@
  * Shared theme resolution shared by every surface (popup, library
  * shell, reader, hub, overlay).
  *
- * Two storage keys participate in the final body[data-theme] value:
+ * The canonical state lives in chrome.storage.sync.theme as one of
+ * "light" | "dark" | "sepia" | "auto". Every surface reads that key
+ * (with "auto" collapsing to light/dark via prefers-color-scheme)
+ * so flipping the value in any UI propagates everywhere.
  *
- *   chrome.storage.sync.theme           -- canonical light/dark/auto.
- *                                          Owned by the popup; consumed
- *                                          everywhere.
- *
- *   chrome.storage.sync.readerSettings.theme
- *                                       -- reader-only override. Only
- *                                          "sepia" is meaningful;
- *                                          anything else (light, dark,
- *                                          auto) defers to the shared
- *                                          theme. Sepia is reader-only
- *                                          because it doesn't make
- *                                          sense for a tooltip-sized
- *                                          floating overlay over
- *                                          arbitrary websites
- *                                          (READER_SPEC.md §"Themes").
+ * readerSettings.theme is kept as a legacy storage field for
+ * back-compat with builds where sepia was a reader-only override.
+ * resolveEffectiveTheme() still honors it as a sepia override so
+ * pre-migration data renders correctly, and migrateThemeIfNeeded()
+ * (in src/reader/reader.ts) promotes any sepia value up to the
+ * shared key on first launch.
  *
  * The functions in this module are stringly-typed on purpose so they
  * can be reused across modules without dragging the heavier
@@ -69,29 +63,29 @@ export function resolveEffectiveTheme(
 }
 
 /**
- * Split a value coming from the reader's Theme dropdown (which still
- * has all 4 options) into the two storage destinations.
+ * Split a value coming from the reader's Theme dropdown into the two
+ * storage destinations.
  *
- * Sepia is reader-only and never touches the shared key. Any other
- * pick is canonical light/dark and is written to the shared key,
- * with the reader's override cleared so subsequent loads track the
- * shared value.
+ * All four choices (light, dark, sepia, auto) are canonical and go
+ * to the shared `theme` key so the popup, in-page overlay, library,
+ * hub, and reader stay in sync. The reader-only override field
+ * (readerSettings.theme) is always cleared to "auto" so legacy data
+ * doesn't fight the shared value the next time the resolver runs.
  */
 export interface PartitionedTheme {
   /** Value to persist into readerSettings.theme. */
-  readerTheme: "sepia" | "auto";
-  /**
-   * Value to persist into the shared `theme` key, or null when the
-   * pick was sepia (in which case the shared key is left untouched).
-   */
-  sharedTheme: "light" | "dark" | "auto" | null;
+  readerTheme: "auto";
+  /** Value to persist into the shared `theme` key. */
+  sharedTheme: "light" | "dark" | "sepia" | "auto";
 }
 
 export function partitionDropdownTheme(picked: string): PartitionedTheme {
-  if (picked === "sepia") {
-    return { readerTheme: "sepia", sharedTheme: null };
-  }
-  if (picked === "light" || picked === "dark" || picked === "auto") {
+  if (
+    picked === "light" ||
+    picked === "dark" ||
+    picked === "sepia" ||
+    picked === "auto"
+  ) {
     return { readerTheme: "auto", sharedTheme: picked };
   }
   return { readerTheme: "auto", sharedTheme: "auto" };

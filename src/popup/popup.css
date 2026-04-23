@@ -1,9 +1,9 @@
 /*
  * Popup settings panel -- fixed 320px width, clean form layout.
- * Dark mode via body[data-theme="dark"], driven by the user's Theme
- * setting (Auto/Light/Dark). popup.ts resolves "auto" against
- * prefers-color-scheme before writing data-theme so this stylesheet
- * never has to consult the OS itself.
+ * Dark and sepia palettes are gated on body[data-theme="dark"|"sepia"],
+ * driven by the user's Theme setting (Auto/Light/Dark/Sepia). popup.ts
+ * resolves "auto" against prefers-color-scheme before writing
+ * data-theme so this stylesheet never has to consult the OS itself.
  * SPEC.md Section 2.5, IMPLEMENTATION_GUIDE.md Step 8c.
  */
 
@@ -789,4 +789,225 @@ body[data-theme="dark"] .inline-warning {
 
 body[data-theme="dark"] hr.section-divider {
   border-top-color: #374151;
+}
+
+/* ─── Sepia mode ─────────────────────────────────────────────────── */
+/* Cream/brown palette borrowed from reader.css so the popup matches
+   the reader and library shell when the user picks Sepia. Same
+   shape as the dark-mode block above; only colors change. */
+
+body[data-theme="sepia"] {
+  background: #f4ecd8;
+  color: #5c4b37;
+}
+
+body[data-theme="sepia"] h1 {
+  border-bottom-color: #d4c8ab;
+}
+
+body[data-theme="sepia"] label {
+  color: #5c4b37;
+}
+
+body[data-theme="sepia"] input[type="text"],
+body[data-theme="sepia"] input[type="password"],
+body[data-theme="sepia"] select {
+  background: #ede4cf;
+  color: #5c4b37;
+  border-color: #d4c8ab;
+}
+
+body[data-theme="sepia"] input[type="text"]:focus,
+body[data-theme="sepia"] input[type="password"]:focus,
+body[data-theme="sepia"] select:focus {
+  border-color: #b8860b;
+  box-shadow: 0 0 0 2px rgba(184, 134, 11, 0.2);
+}
+
+body[data-theme="sepia"] .input-row button {
+  background: #ede4cf;
+  border-color: #d4c8ab;
+  color: #5c4b37;
+}
+
+body[data-theme="sepia"] .input-row button:hover {
+  background: #e2d6b6;
+}
+
+body[data-theme="sepia"] .example {
+  color: #8b7355;
+}
+
+body[data-theme="sepia"] #ocr-btn {
+  border-color: #b8860b;
+  color: #b8860b;
+}
+
+body[data-theme="sepia"] #ocr-btn:hover {
+  background: rgba(184, 134, 11, 0.12);
+}
+
+body[data-theme="sepia"] #library-btn,
+body[data-theme="sepia"] #save-btn {
+  background: #b8860b;
+  color: #fffaf0;
+}
+
+body[data-theme="sepia"] #library-btn:hover,
+body[data-theme="sepia"] #save-btn:hover {
+  background: #9c7209;
+}
+
+body[data-theme="sepia"] #status.success {
+  background: #e2d6b6;
+  color: #5c4b37;
+}
+
+body[data-theme="sepia"] #status.error {
+  background: #f5d6cb;
+  color: #92400e;
+}
+
+body[data-theme="sepia"] .tab-bar {
+  border-bottom-color: #d4c8ab;
+}
+
+body[data-theme="sepia"] .tab-btn {
+  color: #8b7355;
+}
+
+body[data-theme="sepia"] .tab-btn.active {
+  color: #b8860b;
+  border-bottom-color: #b8860b;
+}
+
+body[data-theme="sepia"] .tab-btn:hover:not(.active) {
+  color: #5c4b37;
+}
+
+body[data-theme="sepia"] .vocab-controls button {
+  background: #ede4cf;
+  border-color: #d4c8ab;
+  color: #5c4b37;
+}
+
+body[data-theme="sepia"] .vocab-controls button:hover {
+  background: #f5d6cb;
+  border-color: #c2856a;
+  color: #92400e;
+}
+
+body[data-theme="sepia"] .vocab-row {
+  border-bottom-color: #e2d6b6;
+}
+
+body[data-theme="sepia"] .vocab-pinyin {
+  color: #8b7355;
+}
+
+body[data-theme="sepia"] .vocab-def {
+  color: #5c4b37;
+}
+
+body[data-theme="sepia"] .vocab-empty {
+  color: #8b7355;
+}
+
+body[data-theme="sepia"] .vocab-row:hover {
+  background: #ede4cf;
+}
+
+body[data-theme="sepia"] .vocab-card {
+  background: #f4ecd8;
+  box-shadow: 0 4px 24px rgba(92, 75, 55, 0.25);
+}
+
+body[data-theme="sepia"] .vocab-card-close {
+  color: #8b7355;
+}
+
+body[data-theme="sepia"] .vocab-card-close:hover {
+  color: #5c4b37;
+  background: #ede4cf;
+}
+
+body[data-theme="sepia"] .vocab-card-chars {
+  color: #5c4b37;
+}
+
+body[data-theme="sepia"] .vocab-card-pinyin {
+  color: #8b7355;
+}
+
+body[data-theme="sepia"] .vocab-card-def {
+  color: #5c4b37;
+}
+
+body[data-theme="sepia"] .vocab-card-meta {
+  color: #8b7355;
+}
+
+body[data-theme="sepia"] .vocab-card-delete {
+  background: #f5d6cb;
+  border-color: #c2856a;
+  color: #92400e;
+}
+
+body[data-theme="sepia"] .vocab-card-delete:hover {
+  background: #f0c4b4;
+  border-color: #a0664f;
+}
+
+/* ─── AI Translations section (sepia) ─────────────────────── */
+
+body[data-theme="sepia"] .ai-section {
+  background: #efe6d0;
+  border-color: #d4c8ab;
+}
+
+body[data-theme="sepia"] .switch-label {
+  color: #5c4b37;
+}
+
+body[data-theme="sepia"] .switch-track {
+  background: #d4c8ab;
+}
+
+body[data-theme="sepia"] .switch-input:checked + .switch-track {
+  background: #b8860b;
+}
+
+body[data-theme="sepia"] .switch-input:focus-visible + .switch-track {
+  box-shadow: 0 0 0 2px rgba(184, 134, 11, 0.45);
+}
+
+body[data-theme="sepia"] .info-btn {
+  border-color: #8b7355;
+  color: #8b7355;
+}
+
+body[data-theme="sepia"] .info-btn:hover {
+  background: #ede4cf;
+  color: #5c4b37;
+  border-color: #5c4b37;
+}
+
+body[data-theme="sepia"] .info-popover {
+  background: #f4ecd8;
+  border-color: #d4c8ab;
+  color: #5c4b37;
+  box-shadow: 0 4px 12px rgba(92, 75, 55, 0.2);
+}
+
+body[data-theme="sepia"] #ai-config-fields {
+  border-top-color: #d4c8ab;
+}
+
+body[data-theme="sepia"] .inline-warning {
+  background: #f5d6cb;
+  color: #92400e;
+}
+
+body[data-theme="sepia"] hr.section-divider {
+  border-top-color: #d4c8ab;
 }

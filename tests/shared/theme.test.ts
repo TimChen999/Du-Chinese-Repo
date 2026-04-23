@@ -89,10 +89,10 @@ describe("resolveEffectiveTheme", () => {
 });
 
 describe("partitionDropdownTheme", () => {
-  it("routes sepia to the reader-only override", () => {
+  it("routes sepia to the shared key (sepia is now a shared theme)", () => {
     expect(partitionDropdownTheme("sepia")).toEqual({
-      readerTheme: "sepia",
-      sharedTheme: null,
+      readerTheme: "auto",
+      sharedTheme: "sepia",
     });
   });
 
@@ -118,7 +118,7 @@ describe("partitionDropdownTheme", () => {
   });
 
   it("falls back to a safe default for an unknown value", () => {
-    // Defensive path so a stray HTML edit can't poison both stores.
+    // Defensive path so a stray HTML edit can't poison the shared store.
     expect(partitionDropdownTheme("octarine")).toEqual({
       readerTheme: "auto",
       sharedTheme: "auto",
