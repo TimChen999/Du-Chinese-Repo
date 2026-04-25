@@ -289,6 +289,23 @@
   50% { opacity: 0.5; }
 }
 
+/* ─── Karaoke active word (driven by TTS boundary events) ────── */
+/* Highlight the <ruby> currently being spoken. The transition is
+   intentionally short so the colour follows the audio cleanly. The
+   accent picks up each theme's existing TTS/accent palette. */
+.hg-overlay ruby.hg-tts-active {
+  background: rgba(59, 130, 246, 0.28);
+  transition: background-color 80ms ease-out;
+}
+
+.hg-overlay.hg-dark ruby.hg-tts-active {
+  background: rgba(96, 165, 250, 0.38);
+}
+
+.hg-overlay.hg-sepia ruby.hg-tts-active {
+  background: rgba(184, 134, 11, 0.32);
+}
+
 /* ─── Loading indicator (pulsing dots before LLM response) ───── */
 .hg-loading {
   color: #9ca3af;

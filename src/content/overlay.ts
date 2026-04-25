@@ -384,14 +384,90 @@ function hasChineseVoice(): boolean {
   return voices.some((v) => v.lang.startsWith("zh"));
 }
 
-function speakText(text: string, btn: HTMLElement): void {
+/**
+ * Speaks the selected text as a single natural utterance and drives
+ * the karaoke highlight from a setTimeout-scheduled per-word timeline
+ * pegged to ~MS_PER_CHAR_AT_RATE_1 ms per Chinese character.
+ *
+ * Why timers and not `boundary` events: many Chinese voices in Chrome
+ * don't fire word-level `boundary` events at all, so a boundary-only
+ * implementation left users with audio but no highlight.
+ * Why timers and not one-utterance-per-word: per-word utterances sync
+ * perfectly but introduce audible micro-pauses between words that
+ * break sentence prosody, which the user explicitly wanted preserved.
+ *
+ * The estimate isn't sample-accurate: drift of a few hundred ms is
+ * expected over long sentences, since real cadence varies by voice
+ * and content. For short reading-aid selections it tracks the audio
+ * closely enough to read along.
+ */
+
+// Mid-of-range estimate for Chinese TTS at rate=1.0; the actual
+// utterance rate is re-scaled at use time. Don't try to derive this
+// from `onend - onstart`: that interval includes the browser's
+// trailing silence + event-loop delay (~200-300 ms), so any
+// self-calibration loop fed by it inflates the estimate and makes
+// the highlight progressively lag the audio.
+const MS_PER_CHAR_AT_RATE_1 = 200;
+
+let activeHighlightTimers: number[] = [];
+
+function clearHighlightTimers(): void {
+  activeHighlightTimers.forEach((id) => window.clearTimeout(id));
+  activeHighlightTimers = [];
+}
+
+function clearRubyHighlights(pinyinRow: Element): void {
+  pinyinRow
+    .querySelectorAll(".hg-tts-active")
+    .forEach((r) => r.classList.remove("hg-tts-active"));
+}
+
+function speakText(
+  btn: HTMLElement,
+  words: WordData[],
+  pinyinRow: Element,
+): void {
   window.speechSynthesis.cancel();
+  clearHighlightTimers();
+  clearRubyHighlights(pinyinRow);
+
+  if (words.length === 0) return;
+
+  const text = words.map((w) => w.chars).join("");
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = "zh-CN";
   utterance.rate = 0.85;
-  utterance.onstart = () => btn.classList.add("hg-tts-speaking");
-  utterance.onend = () => btn.classList.remove("hg-tts-speaking");
-  utterance.onerror = () => btn.classList.remove("hg-tts-speaking");
+
+  const rubies = pinyinRow.querySelectorAll<HTMLElement>("ruby.hg-word");
+  const msPerChar = MS_PER_CHAR_AT_RATE_1 / utterance.rate;
+
+  utterance.onstart = () => {
+    btn.classList.add("hg-tts-speaking");
+
+    let cursor = 0;
+    words.forEach((w, i) => {
+      const offsetMs = cursor * msPerChar;
+      const id = window.setTimeout(() => {
+        clearRubyHighlights(pinyinRow);
+        if (i < rubies.length) rubies[i].classList.add("hg-tts-active");
+      }, offsetMs);
+      activeHighlightTimers.push(id);
+      cursor += w.chars.length;
+    });
+  };
+
+  utterance.onend = () => {
+    btn.classList.remove("hg-tts-speaking");
+    clearHighlightTimers();
+    clearRubyHighlights(pinyinRow);
+  };
+  utterance.onerror = () => {
+    btn.classList.remove("hg-tts-speaking");
+    clearHighlightTimers();
+    clearRubyHighlights(pinyinRow);
+  };
+
   window.speechSynthesis.speak(utterance);
 }
 
@@ -433,9 +509,8 @@ function appendTtsBtnElement(pinyinRow: Element, words: WordData[]): void {
   <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
   <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
 </svg>`;
-  btn.setAttribute("data-text", words.map((w) => w.chars).join(""));
   btn.addEventListener("click", () => {
-    speakText(btn.getAttribute("data-text") ?? "", btn);
+    speakText(btn, words, pinyinRow);
   });
   pinyinRow.appendChild(btn);
 }
