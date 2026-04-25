@@ -53,8 +53,8 @@ import { startOCRSelection } from "./ocr-selection";
 /** Monotonic counter to discard responses from superseded requests. */
 let currentRequestId = 0;
 
-/** Increments when an LLM phase completes, so quick previews can't overwrite it. */
-let llmPhaseSequence = 0;
+/** Increments when a final LLM translation renders, so previews can't overwrite it. */
+let llmTranslationSequence = 0;
 
 /** Cached theme setting so each overlay doesn't need a storage read. */
 let cachedTheme: Theme = "auto";
@@ -271,7 +271,7 @@ function processSelection(text: string, rect: DOMRect, context: string): void {
           truncated,
           response.words,
           requestId,
-          llmPhaseSequence,
+          llmTranslationSequence,
         );
       }
     },
@@ -294,7 +294,7 @@ async function runQuickTranslationPreview(
   const result = await translateChineseToEnglish(text);
   if (!result.ok) return;
   if (requestId !== currentRequestId) return;
-  if (llmPhaseSequence !== llmSeqAtStart) return;
+  if (llmTranslationSequence !== llmSeqAtStart) return;
 
   updateOverlayFallback(
     words.map((w) => ({
@@ -367,14 +367,13 @@ chrome.runtime.onMessage.addListener(
   (message: ExtensionMessage) => {
     switch (message.type) {
       case "PINYIN_RESPONSE_LLM":
-        llmPhaseSequence += 1;
+        llmTranslationSequence += 1;
         updateOverlay(message.words, message.translation, cachedTtsEnabled);
         closeOldestKeepalivePort();
         break;
 
       case "PINYIN_ERROR":
         if (message.phase === "llm") {
-          llmPhaseSequence += 1;
           showOverlayError(message.error);
           closeOldestKeepalivePort();
         }

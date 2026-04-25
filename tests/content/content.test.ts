@@ -822,6 +822,54 @@ describe("content script", () => {
       expect(mockUpdateOverlayFallback).not.toHaveBeenCalled();
     });
 
+    it("lets a late quick preview replace an LLM error row while keeping the error badge", async () => {
+      let resolveTranslate: ((value: string) => void) | null = null;
+      const translate = vi.fn(
+        () => new Promise<string>((resolve) => {
+          resolveTranslate = resolve;
+        }),
+      );
+      const create = vi.fn(async () => ({ translate }));
+      setTranslator({
+        availability: vi.fn(async () => "available"),
+        create,
+      });
+      setLlmEnabled(true);
+
+      vi.spyOn(window, "getSelection").mockReturnValue(fakeSelection("我学习中文"));
+      document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+      vi.advanceTimersByTime(DEBOUNCE_MS + 50);
+      vi.useRealTimers();
+      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => setTimeout(r, 0));
+      expect(translate).toHaveBeenCalledWith("我学习中文");
+
+      chrome.runtime.onMessage.callListeners(
+        {
+          type: "PINYIN_ERROR",
+          error: "LLM request failed (HTTP 400).",
+          phase: "llm",
+        },
+        {},
+        vi.fn(),
+      );
+
+      resolveTranslate!("EN(我学习中文)");
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(mockShowOverlayError).toHaveBeenCalledWith(
+        "LLM request failed (HTTP 400).",
+      );
+      expect(mockUpdateOverlayFallback).toHaveBeenCalledTimes(1);
+      const preview = mockUpdateOverlayFallback.mock.calls[0];
+      expect(preview[1]).toBe("EN(我学习中文)");
+      expect(mockUpdateOverlay).not.toHaveBeenCalledWith(
+        expect.anything(),
+        "EN(我学习中文)",
+        expect.anything(),
+      );
+    });
+
     it("does NOT run the fallback when llmEnabled is false but Translator API is missing", async () => {
       // When the API isn't there, the showOverlay loading-row decision
       // also flips off so the user doesn't see a perpetual spinner.

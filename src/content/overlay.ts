@@ -154,6 +154,7 @@ export function showOverlay(
     translation.className = "hg-translation hg-loading";
     translation.textContent = "Loading translation\u2026";
     overlay.appendChild(translation);
+    appendLlmStatus(overlay);
   }
 
   root.appendChild(overlay);
@@ -191,6 +192,7 @@ export function updateOverlay(
     translationEl.classList.remove("hg-loading");
     translationEl.textContent = translation;
   }
+  clearLlmStatus(overlay as HTMLElement);
 }
 
 /**
@@ -247,8 +249,16 @@ export function updateOverlayFallback(
  */
 export function showOverlayError(message: string): void {
   if (!shadowRoot) return;
+  const overlay = shadowRoot.querySelector(".hg-overlay") as HTMLElement | null;
   const el = shadowRoot.querySelector(".hg-translation");
+  if (overlay) {
+    setLlmStatusError(overlay, message);
+  }
   if (el) {
+    // If the quick on-device preview has already filled the translation
+    // row, preserve it. The LLM failure is shown by the status badge so
+    // users still keep the useful fallback translation.
+    if (el.classList.contains("hg-translation-fallback")) return;
     el.classList.remove("hg-loading");
     el.textContent = message;
   }
@@ -431,6 +441,36 @@ function appendTtsBtnElement(pinyinRow: Element, words: WordData[]): void {
 }
 
 // ─── Internal helpers ──────────────────────────────────────────────
+
+function appendLlmStatus(overlay: HTMLElement): void {
+  const status = document.createElement("div");
+  status.className = "hg-llm-status hg-llm-loading";
+  status.title = "LLM translation is still running.";
+  status.setAttribute("role", "status");
+  status.setAttribute("aria-label", "LLM translation is still running");
+  overlay.appendChild(status);
+}
+
+function clearLlmStatus(overlay: HTMLElement): void {
+  overlay.querySelector(".hg-llm-status")?.remove();
+}
+
+function setLlmStatusError(overlay: HTMLElement, message: string): void {
+  let status = overlay.querySelector(".hg-llm-status") as HTMLElement | null;
+  if (!status) {
+    status = document.createElement("div");
+    status.className = "hg-llm-status";
+    overlay.appendChild(status);
+  }
+  status.classList.remove("hg-llm-loading");
+  status.classList.add("hg-llm-error");
+  status.textContent = "!";
+  status.title = message;
+  status.dataset.error = message;
+  status.tabIndex = 0;
+  status.setAttribute("role", "status");
+  status.setAttribute("aria-label", message);
+}
 
 /**
  * Resolves the user's Theme preference to a concrete CSS class

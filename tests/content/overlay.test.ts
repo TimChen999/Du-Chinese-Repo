@@ -207,6 +207,17 @@ describe("overlay", () => {
       expect(translation!.classList.contains("hg-loading")).toBe(true);
     });
 
+    it("shows a small LLM loading status badge when llmEnabled is true", () => {
+      const words: WordData[] = [{ chars: "好", pinyin: "hǎo" }];
+      showOverlay(words, makeDOMRect(100, 200, 100, 20), "light", false, true);
+
+      const host = document.getElementById("hg-extension-root");
+      const status = host!.shadowRoot!.querySelector(".hg-llm-status");
+      expect(status).not.toBeNull();
+      expect(status!.classList.contains("hg-llm-loading")).toBe(true);
+      expect(status!.getAttribute("aria-label")).toContain("still running");
+    });
+
     it("omits the translation row when llmEnabled is false", () => {
       const words: WordData[] = [{ chars: "好", pinyin: "hǎo" }];
       showOverlay(words, makeDOMRect(100, 200, 100, 20), "light", false, false);
@@ -214,6 +225,7 @@ describe("overlay", () => {
       const host = document.getElementById("hg-extension-root");
       const translation = host!.shadowRoot!.querySelector(".hg-translation");
       expect(translation).toBeNull();
+      expect(host!.shadowRoot!.querySelector(".hg-llm-status")).toBeNull();
       // The pinyin row is still rendered.
       expect(host!.shadowRoot!.querySelector(".hg-pinyin-row")).not.toBeNull();
     });
@@ -301,6 +313,22 @@ describe("overlay", () => {
       expect(shadow.querySelector(".hg-loading")).toBeNull();
       const translation = shadow.querySelector(".hg-translation");
       expect(translation!.textContent).toBe("Good.");
+    });
+
+    it("removes the LLM status badge when the LLM response succeeds", () => {
+      const words: WordData[] = [{ chars: "好", pinyin: "hǎo" }];
+      showOverlay(words, makeDOMRect(100, 200, 100, 20), "light");
+
+      const host = document.getElementById("hg-extension-root");
+      const shadow = host!.shadowRoot!;
+      expect(shadow.querySelector(".hg-llm-status")).not.toBeNull();
+
+      updateOverlay(
+        [{ chars: "好", pinyin: "hǎo", definition: "good" }],
+        "Good.",
+      );
+
+      expect(shadow.querySelector(".hg-llm-status")).toBeNull();
     });
 
     it("updates ruby elements with definition data", () => {
@@ -486,6 +514,51 @@ describe("overlay", () => {
       expect(translation!.textContent).toBe(
         "Translation unavailable — using local pinyin only.",
       );
+    });
+
+    it("turns the LLM status badge into an error marker with the message as tooltip text", () => {
+      showOverlay(
+        [{ chars: "好", pinyin: "hǎo" }],
+        makeDOMRect(100, 200, 100, 20),
+        "light",
+      );
+
+      showOverlayError("API key is invalid or expired.");
+
+      const host = document.getElementById("hg-extension-root");
+      const status = host!.shadowRoot!.querySelector(".hg-llm-status") as HTMLElement;
+      expect(status).not.toBeNull();
+      expect(status.classList.contains("hg-llm-loading")).toBe(false);
+      expect(status.classList.contains("hg-llm-error")).toBe(true);
+      expect(status.textContent).toBe("!");
+      expect(status.title).toBe("API key is invalid or expired.");
+      expect(status.dataset.error).toBe("API key is invalid or expired.");
+      expect(status.tabIndex).toBe(0);
+      expect(status.getAttribute("aria-label")).toBe("API key is invalid or expired.");
+    });
+
+    it("preserves quick local translation text when the later LLM request fails", () => {
+      showOverlay(
+        [{ chars: "好", pinyin: "hǎo" }],
+        makeDOMRect(100, 200, 100, 20),
+        "light",
+      );
+      updateOverlayFallback(
+        [{ chars: "好", pinyin: "hǎo", definition: "" }],
+        "Good.",
+      );
+
+      showOverlayError("LLM timed out. Try again.");
+
+      const host = document.getElementById("hg-extension-root");
+      const shadow = host!.shadowRoot!;
+      const translation = shadow.querySelector(".hg-translation");
+      expect(translation!.textContent).toBe("Good.");
+
+      const status = shadow.querySelector(".hg-llm-status") as HTMLElement;
+      expect(status.classList.contains("hg-llm-error")).toBe(true);
+      expect(status.title).toBe("LLM timed out. Try again.");
+      expect(status.dataset.error).toBe("LLM timed out. Try again.");
     });
 
     it("does nothing if overlay has been dismissed", () => {

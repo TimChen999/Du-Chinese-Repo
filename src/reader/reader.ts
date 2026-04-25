@@ -623,13 +623,13 @@ async function processSelection(
     return;
   }
 
-  let llmPhaseSettled = false;
+  let llmTranslationRendered = false;
   if (isTranslatorAvailable()) {
     void runQuickTranslationPreview(
       truncated,
       words,
       settings.ttsEnabled,
-      () => requestId !== currentRequestId || llmPhaseSettled,
+      () => requestId !== currentRequestId || llmTranslationRendered,
     );
   }
 
@@ -638,7 +638,7 @@ async function processSelection(
   const cached = await getFromCache(cacheKey);
   if (cached) {
     if (requestId !== currentRequestId) return;
-    llmPhaseSettled = true;
+    llmTranslationRendered = true;
     updateOverlay(cached.words, cached.translation, settings.ttsEnabled);
     return;
   }
@@ -646,14 +646,12 @@ async function processSelection(
   const cachedErr = await getCachedError(cacheKey);
   if (cachedErr) {
     if (requestId !== currentRequestId) return;
-    llmPhaseSettled = true;
     showOverlayError(cachedErr.message);
     return;
   }
 
   const preset = PROVIDER_PRESETS[settings.provider];
   if (preset.requiresApiKey && !settings.apiKey) {
-    llmPhaseSettled = true;
     showOverlayError("Set up an API key in extension settings for translations.");
     return;
   }
@@ -681,11 +679,10 @@ async function processSelection(
     if (!result.data.partial) {
       await saveToCache(cacheKey, result.data);
     }
-    llmPhaseSettled = true;
+    llmTranslationRendered = true;
     updateOverlay(result.data.words, result.data.translation, settings.ttsEnabled);
   } else {
     await saveErrorToCache(cacheKey, result.error);
-    llmPhaseSettled = true;
     showOverlayError(result.error.message);
   }
 }
