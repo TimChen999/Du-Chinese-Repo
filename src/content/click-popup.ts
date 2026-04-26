@@ -774,6 +774,9 @@ function setLlmStatusBadgeError(message: string): void {
   badge.classList.remove("pt-llm-loading");
   badge.classList.add("pt-llm-error");
   badge.textContent = "!";
+  // data-error feeds the CSS ::after tooltip (same pattern as the reader
+  // overlay's .hg-llm-error). title is kept as a native fallback.
+  badge.setAttribute("data-error", message);
   badge.title = message;
   badge.setAttribute("role", "status");
   badge.setAttribute("aria-label", message);

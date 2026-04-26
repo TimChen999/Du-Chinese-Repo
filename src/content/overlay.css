@@ -735,6 +735,37 @@
   background: #b91c1c;
   color: #fff;
   cursor: help;
+  position: relative;
+}
+
+.pt-popup .pt-llm-status.pt-llm-error::after {
+  content: attr(data-error);
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 1;
+  width: max-content;
+  max-width: 280px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(17, 24, 39, 0.96);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  text-align: left;
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(2px);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.pt-popup .pt-llm-status.pt-llm-error:hover::after,
+.pt-popup .pt-llm-status.pt-llm-error:focus-visible::after {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 @keyframes pt-spin {
