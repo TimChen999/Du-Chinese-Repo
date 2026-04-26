@@ -225,6 +225,27 @@ export const SENTENCE_DELIMS = new Set([
 /** Hard cap on a detected sentence. Anything longer is hard-truncated. */
 export const SENTENCE_MAX_CHARS = 500;
 
+/**
+ * Soft length budget for the click-flow sentence detector. When the
+ * primary delimiter walk produces a sentence longer than this, the
+ * detector silently re-walks with the secondary (clause-level)
+ * delimiter set. Most Chinese sentences are 10-40 chars; 80 buys
+ * comfortable headroom while preventing 200+ char run-ons from
+ * landing in the popup. (.claude/ARCHITECTURE_REDESIGN.md §9)
+ */
+export const SENTENCE_SOFT_LIMIT_CHARS = 80;
+
+/**
+ * Secondary (clause-level) delimiters used by the soft-limit fallback.
+ * Activated when Tier-1 (sentence-level) walk produced too long a chunk.
+ * Includes Chinese commas, enumeration commas, and ASCII commas.
+ */
+export const SENTENCE_CLAUSE_DELIMS = new Set([
+  "，", // 全角逗号
+  "、", // 顿号
+  ",",
+]);
+
 // ─── LLM System Prompt ────────────────────────────────────────────
 /**
  * The system instruction sent to every LLM provider. Defines the
@@ -265,7 +286,7 @@ Respond ONLY with valid JSON in this exact format:
  * the response if violated, keeping the sentence in Bootstrap state.
  */
 export const SYSTEM_PROMPT_SENTENCE = `You are a Chinese language assistant.
-Given one Chinese sentence, you must return:
+Given one Chinese sentence or clause, you must return:
 1. A natural English translation.
 2. The same sentence segmented into words and punctuation. The "text"
    fields, when concatenated in order with no extra characters, MUST

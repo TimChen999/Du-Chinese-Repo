@@ -73,6 +73,46 @@ describe("detectSentence (single text node)", () => {
   });
 });
 
+describe("detectSentence (soft-limit clause fallback)", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("returns the full sentence when under the soft limit", () => {
+    const { node } = buildSingleNodeBlock("我去银行取钱。");
+    const result = detectSentence(node, 2);
+    expect(result?.text).toBe("我去银行取钱。");
+    expect(result?.trimmedToClause).toBeFalsy();
+  });
+
+  it("falls back to comma boundaries when sentence is too long", () => {
+    // > 80 chars, with commas to split on. Click is in the middle clause.
+    const longBody =
+      "今天天气真的非常好" + "啊".repeat(40) + "，" +
+      "我打算和我的朋友" + "去".repeat(20) + "公园玩一会儿，" +
+      "然后再回家做晚饭。";
+    const { node } = buildSingleNodeBlock(longBody);
+    // Position the caret inside the middle clause (after the first comma).
+    const firstCommaIdx = longBody.indexOf("，");
+    const caret = firstCommaIdx + 5;
+    const result = detectSentence(node, caret);
+    expect(result?.trimmedToClause).toBe(true);
+    // The trimmed result should be shorter than the full sentence.
+    expect((result?.text.length ?? 0)).toBeLessThan(longBody.length);
+    // The clause should not start at the original sentence start.
+    expect(result?.text.startsWith("今天")).toBe(false);
+  });
+
+  it("keeps the full sentence when no commas exist to split on", () => {
+    const longBody = "啊".repeat(120) + "。";
+    const { node } = buildSingleNodeBlock(longBody);
+    const result = detectSentence(node, 60);
+    // No commas → clause walk produces same chunk → primary returned.
+    expect(result?.trimmedToClause).toBeFalsy();
+    expect(result?.text).toBe(longBody);
+  });
+});
+
 describe("detectSentence (multiple text nodes)", () => {
   beforeEach(() => {
     document.body.innerHTML = "";

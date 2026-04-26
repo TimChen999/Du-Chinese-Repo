@@ -106,63 +106,7 @@ export interface VocabEntry {
 }
 
 /**
- * Content script -> Service worker message.
- * Sent on mouseup when the user selects Chinese text.
- * Carries the selected text, surrounding paragraph context for the LLM,
- * and the selection's bounding rect for overlay positioning.
- * (SPEC.md Section 5 "Message Protocol")
- */
-export interface PinyinRequest {
-  type: "PINYIN_REQUEST";
-  text: string;
-  context: string;
-  selectionRect: {
-    top: number;
-    left: number;
-    bottom: number;
-    right: number;
-    width: number;
-    height: number;
-  };
-}
-
-/**
- * Service worker -> Content script (Phase 1).
- * The instant local-only response from pinyin-pro, returned via sendResponse.
- * Contains basic pinyin without definitions or translation.
- * (SPEC.md Section 5 "Two-Phase Rendering", Phase 1)
- */
-export interface PinyinResponseLocal {
-  type: "PINYIN_RESPONSE_LOCAL";
-  words: WordData[];
-}
-
-/**
- * Service worker -> Content script (Phase 2).
- * The slower LLM-enhanced response, sent via chrome.tabs.sendMessage.
- * Contains contextually-disambiguated pinyin, per-word definitions,
- * and a full sentence translation.
- * (SPEC.md Section 5 "Two-Phase Rendering", Phase 2)
- */
-export interface PinyinResponseLLM {
-  type: "PINYIN_RESPONSE_LLM";
-  words: Required<WordData>[];
-  translation: string;
-}
-
-/**
- * Error message for either processing phase.
- * phase="local" means pinyin-pro failed; phase="llm" means the API call failed.
- * (SPEC.md Section 5 "Message Protocol")
- */
-export interface PinyinError {
-  type: "PINYIN_ERROR";
-  error: string;
-  phase: "local" | "llm";
-}
-
-/**
- * Runtime configuration passed to the LLM client's queryLLM() function.
+ * Runtime configuration passed to the LLM client's queryLLMSentence().
  * Derived from ExtensionSettings by the service worker before each call.
  * (SPEC.md Section 6 "API Configuration")
  */
@@ -261,10 +205,6 @@ export interface SentenceTranslateError {
  * (SPEC.md Section 2.6, Section 5 "Message Protocol")
  */
 export type ExtensionMessage =
-  | PinyinRequest
-  | PinyinResponseLocal
-  | PinyinResponseLLM
-  | PinyinError
   | SentenceTranslateRequest
   | SentenceTranslateResponseLLM
   | SentenceTranslateError

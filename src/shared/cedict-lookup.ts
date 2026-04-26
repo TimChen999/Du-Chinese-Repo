@@ -292,6 +292,63 @@ export function formatPinyin(
   return syllables.map((s) => formatPinyinSyllable(s, style)).join(" ");
 }
 
+// ─── Sentence-level segmentation ───────────────────────────────────
+
+/**
+ * Walks `sentence` left-to-right with longest-match against CC-CEDICT
+ * and returns one entry per matched word. Non-Chinese runs (English,
+ * digits, punctuation) become their own entries with empty pinyin.
+ *
+ * Used by the click-popup's pinyin strip when the sentence is in
+ * Bootstrap state (LLM hasn't returned yet). When the sentence is
+ * Hot, callers prefer the LLM's `words` array instead — those carry
+ * contextual pinyin that this longest-match path can't produce.
+ */
+export function segmentSentence(
+  sentence: string,
+  style: "toneMarks" | "toneNumbers" | "none",
+): Array<{ text: string; pinyin: string }> {
+  const out: Array<{ text: string; pinyin: string }> = [];
+  if (!sentence) return out;
+
+  let i = 0;
+  while (i < sentence.length) {
+    const ch = sentence[i];
+    if (!isCJK(ch)) {
+      // Coalesce a run of non-CJK characters into a single entry.
+      let j = i;
+      while (j < sentence.length && !isCJK(sentence[j])) j++;
+      out.push({ text: sentence.slice(i, j), pinyin: "" });
+      i = j;
+      continue;
+    }
+    const hit = findLongest(sentence.slice(i));
+    if (hit) {
+      const entry = hit.entries[0];
+      out.push({
+        text: hit.word,
+        pinyin: formatPinyin(entry.pinyinNumeric, style),
+      });
+      i += hit.length;
+    } else {
+      // Unknown CJK char: render bare.
+      out.push({ text: ch, pinyin: "" });
+      i++;
+    }
+  }
+  return out;
+}
+
+function isCJK(ch: string): boolean {
+  if (!ch) return false;
+  const code = ch.charCodeAt(0);
+  // CJK Unified Ideographs + Extension A.
+  return (
+    (code >= 0x4e00 && code <= 0x9fff) ||
+    (code >= 0x3400 && code <= 0x4dbf)
+  );
+}
+
 // ─── Internal helpers ──────────────────────────────────────────────
 
 function defaultResolveUrl(path: string): string {

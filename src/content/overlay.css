@@ -578,6 +578,71 @@
 .pt-popup .pt-alt-pinyin { font-weight: 600; opacity: 0.9; }
 .pt-popup .pt-alt-def { opacity: 0.85; }
 
+/* Pinyin strip — collapsible. Collapsed default = a single thin row
+ * (≈18px) with just a chevron toggle; expanded reveals ruby
+ * annotations over each word in the sentence. */
+.pt-popup .pt-pinyin-strip {
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  position: relative;
+}
+
+.pt-popup .pt-strip-toggle {
+  border: 0;
+  background: transparent;
+  width: 100%;
+  padding: 2px 14px;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  font-size: calc(var(--hg-font-size, 16px) * 0.7);
+  opacity: 0.55;
+  color: inherit;
+  line-height: 1.2;
+}
+
+.pt-popup .pt-strip-toggle:hover { opacity: 0.85; }
+
+.pt-popup .pt-strip-toggle::before {
+  content: "▸ pinyin";
+  display: inline-block;
+}
+.pt-popup .pt-pinyin-strip.pt-strip-expanded .pt-strip-toggle::before {
+  content: "▾ pinyin";
+}
+
+.pt-popup .pt-strip-inner {
+  display: none;
+  padding: 6px 14px 10px;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  font-size: calc(var(--hg-font-size, 16px) * 0.95);
+  line-height: 1.9;
+}
+
+.pt-popup .pt-pinyin-strip.pt-strip-expanded .pt-strip-inner {
+  display: flex;
+}
+
+.pt-popup .pt-strip-ruby {
+  display: inline-flex;
+  flex-direction: column-reverse;
+  align-items: center;
+  ruby-position: over;
+  padding: 0 1px;
+  border-radius: 3px;
+}
+
+.pt-popup .pt-strip-ruby rt {
+  font-size: calc(var(--hg-font-size, 16px) * 0.62);
+  opacity: 0.75;
+  line-height: 1;
+  margin-bottom: 1px;
+}
+
+.pt-popup .pt-strip-ruby.pt-strip-active {
+  background: rgba(255, 200, 0, 0.40);
+}
+
 .pt-popup .pt-sent-tier {
   padding: 10px 14px 12px;
   border-top: 1px solid rgba(0, 0, 0, 0.08);
@@ -615,6 +680,95 @@
 .pt-popup .pt-sent-tier.pt-error {
   color: #b91c1c;
   font-style: italic;
+}
+
+/* Inline spinner: small animated dot; replaced when text fills in. */
+.pt-popup .pt-spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 8px;
+  border-radius: 50%;
+  border: 2px solid rgba(99, 102, 241, 0.35);
+  border-top-color: rgba(99, 102, 241, 0.85);
+  animation: pt-spin 800ms linear infinite;
+  vertical-align: -2px;
+  box-sizing: border-box;
+}
+
+/* Persistent LLM status badge (top-right corner, sits left of the
+ * close button). Spinner while loading; cleared on Hot transition;
+ * red "!" on failure. */
+.pt-popup .pt-llm-status {
+  position: absolute;
+  top: 8px;
+  right: 30px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  font-size: calc(var(--hg-font-size, 16px) * 0.7);
+  font-weight: 700;
+  text-align: center;
+  line-height: 16px;
+  box-sizing: border-box;
+  z-index: 1;
+}
+
+.pt-popup .pt-llm-status.pt-llm-loading {
+  border: 2px solid rgba(99, 102, 241, 0.35);
+  border-top-color: rgba(99, 102, 241, 0.85);
+  animation: pt-spin 800ms linear infinite;
+}
+
+.pt-popup .pt-llm-status.pt-llm-error {
+  background: #b91c1c;
+  color: #fff;
+  cursor: help;
+}
+
+@keyframes pt-spin {
+  to { transform: rotate(360deg); }
+}
+
+.pt-popup .pt-sent-tier {
+  position: relative;
+}
+
+.pt-popup .pt-speak-btn {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  background: rgba(99, 102, 241, 0.12);
+  color: inherit;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: -5px;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.pt-popup .pt-speak-btn:hover {
+  background: rgba(99, 102, 241, 0.24);
+}
+
+.pt-popup .pt-error-icon {
+  display: inline-block;
+  margin-left: 6px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #b91c1c;
+  color: #fff;
+  font-size: calc(var(--hg-font-size, 16px) * 0.7);
+  font-weight: 700;
+  text-align: center;
+  line-height: 16px;
+  cursor: help;
+  vertical-align: -2px;
 }
 
 .pt-popup .pt-close-btn {
@@ -673,3 +827,45 @@
  * to apply to ranges in the host document); they're injected into
  * document.head from src/content/page-highlight.ts at content-script
  * init. */
+
+/* OCR result strip — rendered directly in the host page (not in Shadow
+ * DOM) because click-flow listeners need real text nodes to traverse.
+ * Selectors used in document scope; classes are intentionally
+ * pt-prefixed to avoid host-page collisions. */
+.pt-ocr-strip {
+  position: fixed;
+  z-index: 2147483646; /* one below the popup so the popup sits on top */
+  background: rgba(255, 255, 255, 0.97);
+  color: #1a1a1a;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 6px;
+  padding: 8px 28px 8px 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.pt-ocr-strip-close {
+  position: absolute;
+  top: 0;
+  right: 4px;
+  border: 0;
+  background: transparent;
+  font-size: 18px;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.5;
+  padding: 2px 6px;
+  line-height: 1;
+}
+.pt-ocr-strip-close:hover { opacity: 1; }
+
+@media (prefers-color-scheme: dark) {
+  .pt-ocr-strip {
+    background: rgba(31, 41, 55, 0.97);
+    color: #f3f4f6;
+    border-color: rgba(255, 255, 255, 0.15);
+  }
+}

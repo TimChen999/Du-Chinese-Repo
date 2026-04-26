@@ -35,7 +35,18 @@ interface HighlightRegistry {
   has(name: string): boolean;
 }
 
-/** True when the browser supports the Custom Highlight API. */
+/**
+ * Tracks which document each named highlight currently lives in,
+ * so a transition from iframe range -> parent range (or vice versa)
+ * deletes the old paint before installing the new one.
+ *
+ * Per spec, CSS.highlights is per-document (per-window): an iframe
+ * range painted via the parent's CSS.highlights does not paint at
+ * all. Each document needs its own registry call.
+ */
+const lastHighlightDoc = new Map<string, Document>();
+
+/** True when the (parent) browser supports the Custom Highlight API. */
 export function highlightApiAvailable(): boolean {
   return (
     typeof CSS !== "undefined" &&
@@ -44,26 +55,57 @@ export function highlightApiAvailable(): boolean {
   );
 }
 
-function highlightCtor(): (new (range: Range) => HighlightLike) | null {
-  const ctor = (globalThis as { Highlight?: new (range: Range) => HighlightLike })
-    .Highlight;
+function highlightCtorFor(
+  win: Window | null,
+): (new (range: Range) => HighlightLike) | null {
+  const ctor = (win as unknown as { Highlight?: new (range: Range) => HighlightLike })
+    ?.Highlight;
   return typeof ctor === "function" ? ctor : null;
 }
 
-function highlightsRegistry(): HighlightRegistry | null {
-  if (typeof CSS === "undefined" || !("highlights" in CSS)) return null;
-  return (CSS as unknown as { highlights: HighlightRegistry }).highlights;
+function highlightsRegistryFor(win: Window | null): HighlightRegistry | null {
+  const css = (win as unknown as { CSS?: { highlights?: HighlightRegistry } })?.CSS;
+  if (!css || !css.highlights) return null;
+  return css.highlights;
 }
 
 function setOne(name: string, range: Range | null): void {
-  const reg = highlightsRegistry();
-  const Ctor = highlightCtor();
-  if (!reg || !Ctor) return;
   if (range === null) {
-    reg.delete(name);
+    // Clear from whichever document last held this highlight.
+    const prevDoc = lastHighlightDoc.get(name);
+    if (prevDoc) {
+      const prevReg = highlightsRegistryFor(prevDoc.defaultView);
+      prevReg?.delete(name);
+      lastHighlightDoc.delete(name);
+    }
+    // Also clear from parent (defensive — pre-iframe-tracking state
+    // could have left a stale entry).
+    if (typeof CSS !== "undefined" && "highlights" in CSS) {
+      try {
+        (CSS as unknown as { highlights: HighlightRegistry }).highlights.delete(name);
+      } catch {
+        // ignore
+      }
+    }
     return;
   }
+
+  const doc = range.startContainer.ownerDocument ?? document;
+  const win = doc.defaultView;
+  const reg = highlightsRegistryFor(win);
+  const Ctor = highlightCtorFor(win);
+  if (!reg || !Ctor) return;
+
+  // If the highlight previously lived in a DIFFERENT document, clear
+  // it there so we don't leave a phantom highlight behind when the
+  // user moves between iframe and parent text.
+  const prevDoc = lastHighlightDoc.get(name);
+  if (prevDoc && prevDoc !== doc) {
+    highlightsRegistryFor(prevDoc.defaultView)?.delete(name);
+  }
+
   reg.set(name, new Ctor(range));
+  lastHighlightDoc.set(name, doc);
 }
 
 /** Replaces (or clears) the hover highlight. Cheap; called from rAF. */
@@ -99,18 +141,22 @@ const STYLE_ID = "pt-page-highlight-styles";
 
 /**
  * Injects the document-level `::highlight(...)` CSS rules so the
- * Custom Highlight API has something to paint with. Idempotent — safe
- * to call from the content script's init even on multiple loads.
+ * Custom Highlight API has something to paint with. Idempotent —
+ * safe to call from the content script's init even on multiple loads.
+ *
+ * `doc` defaults to `document` (parent context). EPUB iframe support
+ * passes the iframe's document so highlights paint inside the iframe
+ * too — Custom Highlight API rules and registry are per-document.
  */
-export function ensureHighlightStylesInjected(): void {
-  if (typeof document === "undefined") return;
-  if (document.getElementById(STYLE_ID)) return;
-  const style = document.createElement("style");
+export function ensureHighlightStylesInjected(doc: Document = document): void {
+  if (!doc) return;
+  if (doc.getElementById(STYLE_ID)) return;
+  const style = doc.createElement("style");
   style.id = STYLE_ID;
   style.textContent = `
 ::highlight(pt-hover)    { background-color: rgba(255, 200, 0, 0.30); }
 ::highlight(pt-word)     { background-color: rgba(255, 200, 0, 0.55); }
 ::highlight(pt-sentence) { background-color: rgba(255, 200, 0, 0.18); }
 `;
-  (document.head ?? document.documentElement).appendChild(style);
+  (doc.head ?? doc.documentElement).appendChild(style);
 }

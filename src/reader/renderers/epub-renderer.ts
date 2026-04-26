@@ -33,8 +33,32 @@ export class EpubRenderer implements FormatRenderer {
   private container: HTMLElement | null = null;
   private currentFlow: "scrolled-doc" | "paginated" = "scrolled-doc";
   private relocatedCallback: ((spineIndex: number) => void) | null = null;
+  private iframeRenderedCallback: ((doc: Document) => void) | null = null;
   private lastKnownCfi = "";
   private pendingAnchor: BookmarkAnchor | null = null;
+
+  /**
+   * Registers a callback fired with each rendered spine-page iframe's
+   * Document. The reader uses this to install click-flow listeners on
+   * the iframe's document AND inject its `::highlight()` CSS rules.
+   *
+   * Called once per render() — the same callback fires multiple times
+   * as the user navigates spine pages, since epub.js destroys + recreates
+   * iframes on chapter changes (paginated mode) or appends new ones
+   * (scrolled-doc mode).
+   */
+  onIframeRendered(cb: (doc: Document) => void): void {
+    this.iframeRenderedCallback = cb;
+    if (this.rendition) this.attachIframeRenderedHook(this.rendition);
+  }
+
+  private attachIframeRenderedHook(rendition: Rendition): void {
+    rendition.on("rendered", (_section: unknown, contents: unknown) => {
+      if (!this.iframeRenderedCallback) return;
+      const doc = (contents as { document?: Document })?.document;
+      if (doc) this.iframeRenderedCallback(doc);
+    });
+  }
 
   async load(file: File): Promise<BookMetadata> {
     const arrayBuffer = await file.arrayBuffer();
@@ -83,6 +107,10 @@ export class EpubRenderer implements FormatRenderer {
         this.relocatedCallback(index);
       }
     });
+
+    // Bind the iframe-rendered hook so callers that registered before
+    // renderTo() still receive each spine page's iframe document.
+    this.attachIframeRenderedHook(this.rendition);
 
     await this.rendition.display();
   }

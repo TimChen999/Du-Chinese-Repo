@@ -20,12 +20,25 @@
  */
 
 import overlayStyles from "./overlay.css?inline";
-import type { Theme } from "../shared/types";
+import type { LLMSentenceWord, PinyinStyle, Theme } from "../shared/types";
 import {
   formatPinyin,
   lookupExact,
 } from "../shared/cedict-lookup";
 import type { CedictHit } from "../shared/cedict-types";
+
+/**
+ * Session-level pin for the pinyin-strip toggle. Once a user expands
+ * the strip in this tab, subsequent clicks default to expanded so they
+ * keep their study-mode preference without re-toggling each click.
+ * Reset only on tab unload.
+ */
+let pinyinStripExpandedSession = false;
+
+export interface StripWord {
+  text: string;
+  pinyin: string;
+}
 
 // ─── Module state ──────────────────────────────────────────────────
 
@@ -33,6 +46,7 @@ let shadowRoot: ShadowRoot | null = null;
 let hostElement: HTMLElement | null = null;
 let popupEl: HTMLElement | null = null;
 let onDismiss: (() => void) | null = null;
+let onSpeak: ((sentence: string) => void) | null = null;
 let vocabCallback:
   | ((
       word: { chars: string; pinyin: string; definition: string },
@@ -40,6 +54,15 @@ let vocabCallback:
     ) => void)
   | null = null;
 let currentSentenceText = "";
+
+/**
+ * Live "should the speaker button be present?" snapshot. Captured at
+ * popup creation and updated when settings change at runtime, so any
+ * tier rebuild (setSentenceText / setSentenceError) can re-assert the
+ * button's presence even if it was missing from the initial render
+ * (e.g. content-script settings race) or wiped by a content swap.
+ */
+let currentTtsEnabled = false;
 
 // ─── Public API ────────────────────────────────────────────────────
 
@@ -61,6 +84,29 @@ export function setClickPopupDismissHandler(cb: () => void): void {
   onDismiss = cb;
 }
 
+/**
+ * Registers the callback fired when the user clicks the speaker button
+ * on the popup's sentence tier. The callback receives the current
+ * sentence text; the click-flow looks up the in-memory state for that
+ * sentence (range + LLM words) and drives speech synthesis from there.
+ */
+export function setClickPopupSpeakHandler(
+  cb: (sentence: string) => void,
+): void {
+  onSpeak = cb;
+}
+
+/**
+ * Live setter for the popup's "should the speaker button be present?"
+ * snapshot. Click-flow calls this when the ttsEnabled setting changes
+ * at runtime so an already-open popup's next tier rebuild reflects the
+ * new state. Doesn't mutate the DOM directly — the next setSentenceText
+ * / setSentenceError pass picks it up.
+ */
+export function setClickPopupTtsEnabled(enabled: boolean): void {
+  currentTtsEnabled = enabled;
+}
+
 export interface ShowBootstrapArgs {
   word: {
     chars: string;
@@ -68,19 +114,31 @@ export interface ShowBootstrapArgs {
     gloss: string;
   };
   sentence: string;
+  /** Bootstrap segmentation of the full sentence (for the pinyin strip). */
+  sentenceWords: StripWord[];
   /** Position of the clicked word on screen (used to anchor the popup). */
   anchorRect: DOMRect;
+  /** Bounding rect of the highlighted sentence; popup avoids covering it. */
+  sentenceRect: DOMRect;
   theme: Theme;
   fontSize: number;
   /** True when LLM enrichment is on its way (sentence tier shows spinner). */
   expectLlm: boolean;
   /** True when the on-device translator can fill the sentence tier. */
   expectBootstrapTranslation: boolean;
+  pinyinStyle: PinyinStyle;
+  /**
+   * True when TTS is enabled in settings AND a Chinese voice is
+   * available; controls whether the speaker button is rendered.
+   */
+  ttsEnabled: boolean;
 }
 
 /**
  * Renders the popup in Bootstrap state: word tier from CC-CEDICT,
- * sentence tier waiting for translation. Replaces any prior popup.
+ * pinyin strip (collapsed by default) reflecting the Bootstrap
+ * segmentation, sentence tier waiting for translation. Replaces any
+ * prior popup.
  */
 export function showBootstrap(args: ShowBootstrapArgs): void {
   const root = ensureRoot();
@@ -108,18 +166,44 @@ export function showBootstrap(args: ShowBootstrapArgs): void {
   wordTier.appendChild(makeActionsRow(args.word, args.sentence));
   popup.appendChild(wordTier);
 
+  // Pinyin strip — collapsed by default (1 thin row), expandable.
+  popup.appendChild(makePinyinStrip(args.sentenceWords, args.word.chars));
+
   // Sentence tier
   const sentTier = document.createElement("div");
   sentTier.className = "pt-sent-tier";
+  // Speaker button comes FIRST in the sentence tier so it sits to the
+  // left of the translation text. Don't gate on hasChineseVoice() —
+  // voices in Chrome load asynchronously and the first popup often
+  // opens before the voiceschanged event fires; if no Chinese voice
+  // is ever found the synth call is a graceful no-op.
+  currentTtsEnabled = args.ttsEnabled;
+  if (currentTtsEnabled) {
+    sentTier.appendChild(makeSpeakerButton(args.sentence));
+  }
   if (args.expectLlm || args.expectBootstrapTranslation) {
     sentTier.classList.add("pt-loading");
-    sentTier.textContent = "Translating sentence…";
+    sentTier.appendChild(makeLoadingSpinner());
+    sentTier.appendChild(document.createTextNode("Translating sentence…"));
   } else {
     sentTier.classList.add("pt-empty");
-    sentTier.textContent =
-      "Sentence translation requires AI Translations or Chrome's on-device translator.";
+    sentTier.appendChild(
+      document.createTextNode(
+        "Sentence translation requires AI Translations or Chrome's on-device translator.",
+      ),
+    );
   }
   popup.appendChild(sentTier);
+
+  // Persistent LLM status badge in the popup's top-right corner.
+  // Visible spinner while LLM is in flight; clears on success;
+  // turns into a hoverable error icon on failure. This mirrors the
+  // legacy overlay's `.hg-llm-status` so the user always has an
+  // at-a-glance signal of LLM progress regardless of which tier
+  // they're reading.
+  if (args.expectLlm) {
+    popup.appendChild(makeLlmStatusBadge());
+  }
 
   // Close button
   const closeBtn = document.createElement("button");
@@ -133,7 +217,7 @@ export function showBootstrap(args: ShowBootstrapArgs): void {
   popupEl = popup;
   currentSentenceText = args.sentence;
 
-  positionPopup(popup, args.anchorRect);
+  positionPopup(popup, args.anchorRect, args.sentenceRect);
 }
 
 /**
@@ -193,16 +277,103 @@ export function setSentenceText(
   tier.classList.remove("pt-loading", "pt-empty", "pt-error");
   tier.classList.toggle("pt-bootstrap", source === "bootstrap");
   tier.classList.toggle("pt-llm", source === "llm");
-  tier.textContent = text;
+  // Replace contents (including any spinner) with the text. Re-assert
+  // the speaker button so it survives the rebuild even if it was never
+  // rendered initially (e.g. content-script settings race where
+  // showBootstrap fired before chrome.storage.sync.get resolved).
+  let speakBtn = tier.querySelector(".pt-speak-btn") as HTMLElement | null;
+  while (tier.firstChild) tier.removeChild(tier.firstChild);
+  tier.appendChild(document.createTextNode(text));
+  if (currentTtsEnabled) {
+    if (!speakBtn) speakBtn = makeSpeakerButton(currentSentenceText);
+    tier.insertBefore(speakBtn, tier.firstChild);
+  }
+  // The corner LLM-status badge clears the moment the LLM lands —
+  // independent of which tier the source is. The bootstrap path
+  // doesn't clear it (LLM may still be in flight).
+  if (source === "llm") clearLlmStatusBadge();
+}
+
+/**
+ * Replaces the pinyin-strip's word data with the LLM's contextual
+ * `words` array. Drops punctuation entries from the rendering. Called
+ * from click-flow when SENTENCE_TRANSLATE_RESPONSE_LLM lands.
+ */
+export function upgradeStripWithLlm(
+  words: LLMSentenceWord[],
+  activeChars: string,
+): void {
+  if (!popupEl) return;
+  const strip = popupEl.querySelector(".pt-pinyin-strip");
+  if (!strip) return;
+  const inner = strip.querySelector(".pt-strip-inner");
+  if (!inner) return;
+  const stripWords: StripWord[] = words
+    .filter((w) => /[一-鿿㐀-䶿]/.test(w.text))
+    .map((w) => ({ text: w.text, pinyin: w.pinyin }));
+  while (inner.firstChild) inner.removeChild(inner.firstChild);
+  for (const w of stripWords) inner.appendChild(makeStripRuby(w, activeChars));
+}
+
+/**
+ * Updates the "active" highlight inside the pinyin strip to point at
+ * `chars`. Called on retarget so the strip reflects which word is in
+ * the word tier.
+ */
+export function refreshPinyinStripActiveWord(chars: string): void {
+  if (!popupEl) return;
+  const strip = popupEl.querySelector(".pt-pinyin-strip");
+  if (!strip) return;
+  const rubies = strip.querySelectorAll<HTMLElement>(".pt-strip-ruby");
+  rubies.forEach((r) => {
+    r.classList.toggle("pt-strip-active", r.dataset.chars === chars);
+  });
+}
+
+/**
+ * Replaces the word tier wholesale to point at a different word in the
+ * same popup. Distinct from upgradeWord (which only refreshes header +
+ * gloss in place after the LLM returns): retargetWord rebuilds the
+ * actions row too, so a fresh "+ Vocab" button replaces a previously
+ * "Added"-disabled one when the user clicks a new word.
+ *
+ * Pre-condition: the popup is already open. No-op otherwise.
+ */
+export function retargetWord(
+  word: { chars: string; pinyin: string; gloss: string },
+  sentence: string,
+): void {
+  if (!popupEl) return;
+  const tier = popupEl.querySelector(".pt-word-tier");
+  if (!tier) return;
+
+  // Drop everything in the word tier and rebuild it cleanly. The
+  // sentence-tier (translation, pinyin strip, etc.) is left alone so
+  // the user keeps their cached LLM result + expanded pinyin strip.
+  while (tier.firstChild) tier.removeChild(tier.firstChild);
+  tier.appendChild(makeWordHeader(word));
+  if (word.gloss) {
+    const gloss = document.createElement("div");
+    gloss.className = "pt-gloss";
+    gloss.textContent = word.gloss;
+    tier.appendChild(gloss);
+  }
+  tier.appendChild(makeActionsRow(word, sentence));
 }
 
 export function setSentenceError(message: string): void {
   if (!popupEl) return;
+  // Promote the corner badge to its error state regardless of what the
+  // sentence tier looks like — the user always has a clear, hoverable
+  // error indicator.
+  setLlmStatusBadgeError(message);
+
   const tier = popupEl.querySelector(".pt-sent-tier");
   if (!tier) return;
   // Don't clobber an existing successful translation with an error. The
   // Bootstrap path may have filled the tier and the LLM may then fail —
-  // we'd rather keep the bootstrap text and show the error inline.
+  // we'd rather keep the bootstrap text. The corner badge already
+  // surfaces the error state.
   if (
     tier.classList.contains("pt-bootstrap") ||
     tier.classList.contains("pt-llm")
@@ -211,7 +382,14 @@ export function setSentenceError(message: string): void {
   }
   tier.classList.remove("pt-loading", "pt-empty");
   tier.classList.add("pt-error");
-  tier.textContent = message;
+  // Re-assert the speaker button (same logic as setSentenceText).
+  let speakBtn = tier.querySelector(".pt-speak-btn") as HTMLElement | null;
+  while (tier.firstChild) tier.removeChild(tier.firstChild);
+  tier.appendChild(document.createTextNode(message));
+  if (currentTtsEnabled) {
+    if (!speakBtn) speakBtn = makeSpeakerButton(currentSentenceText);
+    tier.insertBefore(speakBtn, tier.firstChild);
+  }
 }
 
 /**
@@ -221,6 +399,23 @@ export function setSentenceError(message: string): void {
  */
 export function isShowingSentence(sentence: string): boolean {
   return Boolean(popupEl) && currentSentenceText === sentence;
+}
+
+/** Whether the popup is currently shown for any sentence. */
+export function isPopupOpen(): boolean {
+  return Boolean(popupEl);
+}
+
+/** Returns the current sentence the popup was opened for, or "". */
+export function getCurrentSentence(): string {
+  return currentSentenceText;
+}
+
+/** Returns the chars currently shown in the word tier, or null. */
+export function getCurrentWordChars(): string | null {
+  if (!popupEl) return null;
+  const charsEl = popupEl.querySelector(".pt-chars");
+  return charsEl ? charsEl.textContent : null;
 }
 
 export function dismiss(): void {
@@ -357,38 +552,219 @@ function toggleAltReadings(btn: HTMLElement, hits: ReturnType<typeof lookupExact
 }
 
 /**
- * Positions the popup near the click. Prefers below the clicked word;
- * falls back to above when there isn't enough space. Clamps within the
- * viewport horizontally.
+ * Positions the popup so it never covers the highlighted sentence.
+ *
+ *  1. Below the sentence rect (preferred).
+ *  2. Above the sentence rect.
+ *  3. To the right (column margin), then to the left.
+ *  4. Bottom-clamped fallback.
+ *
+ * Horizontal anchor centres on the clicked word's x-midpoint when
+ * placing above/below the sentence (so the user's eye doesn't have to
+ * travel far) — clamped within the viewport.
  */
-function positionPopup(popup: HTMLElement, rect: DOMRect): void {
+function positionPopup(
+  popup: HTMLElement,
+  wordRect: DOMRect,
+  sentenceRect: DOMRect,
+): void {
   const gap = 8;
   const vpW = window.innerWidth;
   const vpH = window.innerHeight;
 
-  // Pre-measure: the popup is now in the DOM; measure its size.
   const popupRect = popup.getBoundingClientRect();
   const w = popupRect.width || 320;
-  const h = popupRect.height || 100;
+  const h = popupRect.height || 120;
 
-  let top: number;
-  if (rect.bottom + gap + h <= vpH) {
-    top = rect.bottom + gap;
-  } else if (rect.top - gap - h >= 0) {
-    top = rect.top - gap - h;
-  } else {
-    top = Math.max(gap, vpH - h - gap);
+  type Slot = { top: number; left: number };
+
+  const slots: Slot[] = [];
+
+  // 1. Below the sentence.
+  if (sentenceRect.bottom + gap + h <= vpH) {
+    const idealLeft = wordRect.left + wordRect.width / 2 - w / 2;
+    slots.push({
+      top: sentenceRect.bottom + gap,
+      left: clamp(idealLeft, gap, vpW - w - gap),
+    });
   }
 
-  const idealLeft = rect.left + rect.width / 2 - w / 2;
-  const left = Math.max(gap, Math.min(idealLeft, vpW - w - gap));
+  // 2. Above the sentence.
+  if (sentenceRect.top - gap - h >= 0) {
+    const idealLeft = wordRect.left + wordRect.width / 2 - w / 2;
+    slots.push({
+      top: sentenceRect.top - gap - h,
+      left: clamp(idealLeft, gap, vpW - w - gap),
+    });
+  }
 
-  popup.style.top = `${top}px`;
-  popup.style.left = `${left}px`;
+  // 3. To the right.
+  if (sentenceRect.right + gap + w <= vpW) {
+    slots.push({
+      top: clamp(sentenceRect.top, gap, vpH - h - gap),
+      left: sentenceRect.right + gap,
+    });
+  }
+
+  // 4. To the left.
+  if (sentenceRect.left - gap - w >= 0) {
+    slots.push({
+      top: clamp(sentenceRect.top, gap, vpH - h - gap),
+      left: sentenceRect.left - gap - w,
+    });
+  }
+
+  // 5. Fallback: bottom-clamped, horizontally centred under word.
+  if (slots.length === 0) {
+    const idealLeft = wordRect.left + wordRect.width / 2 - w / 2;
+    slots.push({
+      top: Math.max(gap, vpH - h - gap),
+      left: clamp(idealLeft, gap, vpW - w - gap),
+    });
+  }
+
+  const chosen = slots[0];
+  popup.style.top = `${chosen.top}px`;
+  popup.style.left = `${chosen.left}px`;
+}
+
+function clamp(v: number, min: number, max: number): number {
+  return Math.max(min, Math.min(v, max));
+}
+
+// ─── Pinyin strip ──────────────────────────────────────────────────
+
+/**
+ * Builds the collapsible pinyin strip element. Collapsed by default
+ * (single thin row with toggle), expanded reveals a ruby annotation
+ * for each Chinese word in the sentence. Sticky session preference:
+ * once the user expands it, subsequent popup opens default to expanded.
+ */
+function makePinyinStrip(
+  sentenceWords: StripWord[],
+  activeChars: string,
+): HTMLElement {
+  const strip = document.createElement("div");
+  strip.className = "pt-pinyin-strip";
+  if (pinyinStripExpandedSession) strip.classList.add("pt-strip-expanded");
+
+  const toggle = document.createElement("button");
+  toggle.className = "pt-strip-toggle";
+  toggle.type = "button";
+  toggle.setAttribute("aria-expanded", String(pinyinStripExpandedSession));
+  toggle.addEventListener("click", () => {
+    const expanded = strip.classList.toggle("pt-strip-expanded");
+    pinyinStripExpandedSession = expanded;
+    toggle.setAttribute("aria-expanded", String(expanded));
+    // Re-position once expand/collapse changes the popup height.
+    if (popupEl) {
+      // We don't have the rects on hand; re-running the rect-based
+      // positioning here would need the click-flow to re-supply them.
+      // Skip — the strip itself sits inside the popup and only
+      // changes height; horizontal alignment is unaffected and the
+      // popup may scroll internally if it gets too tall.
+    }
+  });
+  strip.appendChild(toggle);
+
+  const inner = document.createElement("div");
+  inner.className = "pt-strip-inner";
+  for (const w of sentenceWords) {
+    if (!w.text || !/[一-鿿㐀-䶿]/.test(w.text)) continue;
+    inner.appendChild(makeStripRuby(w, activeChars));
+  }
+  strip.appendChild(inner);
+
+  return strip;
+}
+
+function makeStripRuby(w: StripWord, activeChars: string): HTMLElement {
+  const ruby = document.createElement("ruby");
+  ruby.className = "pt-strip-ruby";
+  ruby.dataset.chars = w.text;
+  if (w.text === activeChars) ruby.classList.add("pt-strip-active");
+  ruby.appendChild(document.createTextNode(w.text));
+  const rt = document.createElement("rt");
+  rt.textContent = w.pinyin;
+  ruby.appendChild(rt);
+  return ruby;
+}
+
+// ─── Loading spinner ───────────────────────────────────────────────
+
+function makeLoadingSpinner(): HTMLElement {
+  const spinner = document.createElement("span");
+  spinner.className = "pt-spinner";
+  spinner.setAttribute("aria-hidden", "true");
+  return spinner;
+}
+
+// ─── LLM status badge ──────────────────────────────────────────────
+
+/**
+ * Persistent badge in the popup's top-right corner indicating LLM
+ * progress. Starts as a spinner; clears (removed) on Hot transition;
+ * turns into a hoverable "!" on failure.
+ */
+function makeLlmStatusBadge(): HTMLElement {
+  const badge = document.createElement("div");
+  badge.className = "pt-llm-status pt-llm-loading";
+  badge.title = "AI translation is still running.";
+  badge.setAttribute("role", "status");
+  badge.setAttribute("aria-label", "AI translation is still running");
+  return badge;
+}
+
+/** Removes the LLM status badge from the popup (LLM finished). */
+function clearLlmStatusBadge(): void {
+  if (!popupEl) return;
+  popupEl.querySelector(".pt-llm-status")?.remove();
+}
+
+/** Promotes the LLM status badge to an error state (still visible). */
+function setLlmStatusBadgeError(message: string): void {
+  if (!popupEl) return;
+  let badge = popupEl.querySelector(".pt-llm-status") as HTMLElement | null;
+  if (!badge) {
+    badge = document.createElement("div");
+    badge.className = "pt-llm-status";
+    popupEl.appendChild(badge);
+  }
+  badge.classList.remove("pt-llm-loading");
+  badge.classList.add("pt-llm-error");
+  badge.textContent = "!";
+  badge.title = message;
+  badge.setAttribute("role", "status");
+  badge.setAttribute("aria-label", message);
+  badge.tabIndex = 0;
+}
+
+// ─── Speaker button (TTS) ──────────────────────────────────────────
+
+function makeSpeakerButton(sentence: string): HTMLElement {
+  const btn = document.createElement("button");
+  btn.className = "pt-speak-btn";
+  btn.type = "button";
+  btn.title = "Speak sentence";
+  btn.setAttribute("aria-label", "Speak sentence");
+  btn.innerHTML =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>' +
+    '<path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>' +
+    "</svg>";
+  btn.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    if (onSpeak) onSpeak(sentence);
+  });
+  return btn;
 }
 
 function resolveTheme(theme: Theme): "light" | "dark" | "sepia" {
   if (theme === "light" || theme === "dark" || theme === "sepia") return theme;
+  // jsdom doesn't expose matchMedia; fall back to "light" in tests.
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    return "light";
+  }
   return window.matchMedia("(prefers-color-scheme: dark)").matches
     ? "dark"
     : "light";

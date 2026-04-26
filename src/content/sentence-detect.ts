@@ -16,18 +16,38 @@
  * See: .claude/ARCHITECTURE_REDESIGN.md Section 9 "Sentence detection".
  */
 
-import { SENTENCE_DELIMS, SENTENCE_MAX_CHARS } from "../shared/constants";
+import {
+  SENTENCE_CLAUSE_DELIMS,
+  SENTENCE_DELIMS,
+  SENTENCE_MAX_CHARS,
+  SENTENCE_SOFT_LIMIT_CHARS,
+} from "../shared/constants";
 
 export interface SentenceResult {
   /** Full sentence text. */
   text: string;
   /** DOM Range covering the sentence (cross-text-node). */
   range: Range;
+  /**
+   * True when the soft-limit fallback fired and clause-level commas
+   * were used as boundaries instead of full sentence terminators.
+   * Reader/UI can ignore this; it's exposed for diagnostics.
+   */
+  trimmedToClause?: boolean;
 }
 
 /**
- * Finds the sentence around (textNode, offset). Returns null when the
- * caret is on whitespace at a block boundary with no Chinese text in
+ * Finds the sentence around (textNode, offset).
+ *
+ * Two tiers:
+ *  1. Primary walk uses SENTENCE_DELIMS (｡｜！｜？｜；) — real sentence
+ *     boundaries. Returned as-is when length ≤ SENTENCE_SOFT_LIMIT_CHARS.
+ *  2. When the primary result is too long, re-walk with the clause-level
+ *     delimiter set (SENTENCE_CLAUSE_DELIMS, Chinese commas) added.
+ *     Returns the narrower clause-bounded chunk so the popup translates
+ *     a manageable subsection instead of a 200-char wall.
+ *
+ * Returns null when the caret is in whitespace with no Chinese text in
  * either direction.
  */
 export function detectSentence(
@@ -35,21 +55,44 @@ export function detectSentence(
   offset: number,
   doc: Document = document,
 ): SentenceResult | null {
+  const primary = walkOnce(textNode, offset, SENTENCE_DELIMS, doc);
+  if (!primary) return null;
+
+  if (primary.text.length <= SENTENCE_SOFT_LIMIT_CHARS) return primary;
+
+  // Soft-limit fallback: include commas as additional delimiters.
+  const expanded = new Set<string>(SENTENCE_DELIMS);
+  for (const d of SENTENCE_CLAUSE_DELIMS) expanded.add(d);
+  const clause = walkOnce(textNode, offset, expanded, doc);
+  if (clause && clause.text.length < primary.text.length) {
+    return { ...clause, trimmedToClause: true };
+  }
+  // Clause walk didn't shrink it (no commas in range); keep primary.
+  return primary;
+}
+
+/**
+ * Walks backward + forward from (textNode, offset) using the provided
+ * delimiter set. Pulled out as a parameterised helper so the tier-1 and
+ * tier-2 calls share one implementation.
+ */
+function walkOnce(
+  textNode: Text,
+  offset: number,
+  delims: Set<string>,
+  doc: Document,
+): SentenceResult | null {
   const blockAncestor = findBlockAncestor(textNode);
 
-  // Walk backward to find the start.
-  const backward = walkBackwardForStart(textNode, offset, blockAncestor);
-  // Walk forward to find the end.
-  const forward = walkForwardForEnd(textNode, offset, blockAncestor);
+  const backward = walkBackwardForStart(textNode, offset, blockAncestor, delims);
+  const forward = walkForwardForEnd(textNode, offset, blockAncestor, delims);
 
   if (!backward || !forward) return null;
 
   const { node: startNode, offset: startOffset, prefix } = backward;
   const { node: endNode, offset: endOffset, suffix } = forward;
 
-  // The "current node, current offset" character is in `suffix` already.
   const text = prefix + suffix;
-
   if (!text || text.length === 0) return null;
 
   const range = doc.createRange();
@@ -59,7 +102,6 @@ export function detectSentence(
   } catch {
     return null;
   }
-
   return { text, range };
 }
 
@@ -76,8 +118,9 @@ function walkBackwardForStart(
   textNode: Text,
   offset: number,
   block: Element,
+  delims: Set<string>,
 ): BackwardResult | null {
-  let node: Text = textNode;
+  const node: Text = textNode;
   let charsCollected = 0;
   // First: check the current text node from offset-1 backward.
   let i = offset - 1;
@@ -85,7 +128,7 @@ function walkBackwardForStart(
 
   while (i >= 0 && charsCollected < SENTENCE_MAX_CHARS) {
     const ch = node.data[i];
-    if (SENTENCE_DELIMS.has(ch)) {
+    if (delims.has(ch)) {
       // Sentence starts at i+1 in this node.
       return { node, offset: i + 1, prefix: collected };
     }
@@ -97,7 +140,7 @@ function walkBackwardForStart(
   // Reached start of node without a delim. Walk to previous text node
   // within block; capture in pieces.
   let curStartNode: Text = node;
-  let curStartOffset = 0;
+  const curStartOffset = 0;
   let prefix = collected;
 
   let prev = previousTextNode(node, block);
@@ -105,10 +148,9 @@ function walkBackwardForStart(
     const data = prev.data;
     let j = data.length - 1;
     let chunk = "";
-    let foundDelim = false;
     while (j >= 0 && charsCollected < SENTENCE_MAX_CHARS) {
       const ch = data[j];
-      if (SENTENCE_DELIMS.has(ch)) {
+      if (delims.has(ch)) {
         return {
           node: prev,
           offset: j + 1,
@@ -119,10 +161,8 @@ function walkBackwardForStart(
       charsCollected++;
       j--;
     }
-    if (foundDelim) break;
     prefix = chunk + prefix;
     curStartNode = prev;
-    curStartOffset = 0;
     prev = previousTextNode(prev, block);
   }
 
@@ -142,8 +182,9 @@ function walkForwardForEnd(
   textNode: Text,
   offset: number,
   block: Element,
+  delims: Set<string>,
 ): ForwardResult | null {
-  let node: Text = textNode;
+  const node: Text = textNode;
   let charsCollected = 0;
   let i = offset;
   let collected = "";
@@ -152,7 +193,7 @@ function walkForwardForEnd(
     const ch = node.data[i];
     collected += ch;
     charsCollected++;
-    if (SENTENCE_DELIMS.has(ch)) {
+    if (delims.has(ch)) {
       return { node, offset: i + 1, suffix: collected };
     }
     i++;
@@ -168,12 +209,11 @@ function walkForwardForEnd(
     const data = next.data;
     let j = 0;
     let chunk = "";
-    let foundDelim = false;
     while (j < data.length && charsCollected < SENTENCE_MAX_CHARS) {
       const ch = data[j];
       chunk += ch;
       charsCollected++;
-      if (SENTENCE_DELIMS.has(ch)) {
+      if (delims.has(ch)) {
         return {
           node: next,
           offset: j + 1,
@@ -182,7 +222,6 @@ function walkForwardForEnd(
       }
       j++;
     }
-    if (foundDelim) break;
     suffix += chunk;
     curEndNode = next;
     curEndOffset = next.data.length;

@@ -21,6 +21,7 @@ import {
   formatPinyin,
   isDictionaryReady,
   lookupExact,
+  segmentSentence,
 } from "../shared/cedict-lookup";
 import {
   caretFromPoint,
@@ -30,7 +31,6 @@ import {
 import { detectSentence, type SentenceResult } from "./sentence-detect";
 import {
   clearAllHighlights,
-  clearWordHighlights,
   ensureHighlightStylesInjected,
   highlightApiAvailable,
   setHoverHighlight,
@@ -40,14 +40,28 @@ import {
 import {
   bootstrapWordFromHit,
   dismiss as dismissPopup,
+  getCurrentSentence,
+  getCurrentWordChars,
   getPopupHostElement,
+  isPopupOpen,
   isShowingSentence,
+  refreshPinyinStripActiveWord,
+  retargetWord,
   setClickPopupDismissHandler,
+  setClickPopupSpeakHandler,
+  setClickPopupTtsEnabled,
   setSentenceError,
   setSentenceText,
   showBootstrap,
+  upgradeStripWithLlm,
   upgradeWord,
+  type StripWord,
 } from "./click-popup";
+import {
+  cancelSpeaking,
+  ensureVoicesLoaded,
+  speakSentence,
+} from "./click-tts";
 import {
   isTranslatorAvailable,
   prewarmTranslator,
@@ -69,6 +83,7 @@ interface ClickFlowSettings {
   fontSize: number;
   pinyinStyle: PinyinStyle;
   llmEnabled: boolean;
+  ttsEnabled: boolean;
   /** Master switch for the click flow. When false, only the legacy
    *  selection / context-menu / shortcut paths fire. */
   clickFlowEnabled: boolean;
@@ -79,11 +94,66 @@ let settings: ClickFlowSettings = {
   fontSize: 16,
   pinyinStyle: "toneMarks",
   llmEnabled: true,
+  ttsEnabled: true,
   clickFlowEnabled: true,
 };
 
 export function setClickFlowSettings(next: Partial<ClickFlowSettings>): void {
   settings = { ...settings, ...next };
+  // Mirror ttsEnabled into the popup module so an already-open popup
+  // re-asserts the speaker button on its next tier rebuild without
+  // waiting for a fresh click. Idempotent.
+  if (typeof next.ttsEnabled === "boolean") {
+    setClickPopupTtsEnabled(next.ttsEnabled);
+  }
+}
+
+// ─── Pluggable sentence-translation provider ───────────────────────
+
+/**
+ * Function signature for "ask the LLM (or cache) to translate a
+ * sentence and route the response back into the popup."
+ *
+ * Default implementation (set in initClickFlow) sends a
+ * SENTENCE_TRANSLATE_REQUEST via chrome.runtime.sendMessage, intended
+ * for content scripts where the service worker owns the LLM client.
+ *
+ * The reader page registers its own provider that imports
+ * queryLLMSentence + sentence-cache directly (extension pages can do
+ * cross-origin fetches), so the reader doesn't pay the SW round-trip.
+ */
+export type SentenceTranslationProvider = (args: {
+  sentence: string;
+  pinyinStyle: PinyinStyle;
+  requestId: number;
+  onResponse: (msg: SentenceTranslateResponseLLM) => void;
+  onError: (msg: { error: string; code: string }) => void;
+}) => void;
+
+let sentenceProvider: SentenceTranslationProvider | null = null;
+
+export function setSentenceTranslationProvider(
+  provider: SentenceTranslationProvider,
+): void {
+  sentenceProvider = provider;
+}
+
+// ─── Commit-hook for host integrations (reader) ───────────────────
+
+/**
+ * Fired whenever a fresh sentence opens. Reader uses this to capture
+ * its bookmark anchor (so reopening lands on the exact word the user
+ * looked at). No-op by default.
+ */
+type CommitHook = (info: {
+  sentence: string;
+  word: string;
+  textNode: Text;
+  offset: number;
+}) => void;
+let onCommit: CommitHook | null = null;
+export function setOnSentenceCommit(cb: CommitHook | null): void {
+  onCommit = cb;
 }
 
 // ─── Per-sentence state ────────────────────────────────────────────
@@ -102,33 +172,97 @@ const sentenceStates = new Map<string, SentenceState>();
 /** The sentence currently shown in the popup. Used to drop late LLM responses. */
 let currentSentence = "";
 let currentRequestId = 0;
+/**
+ * Current click-flow popup's anchor: the text node + sentence start
+ * offset on the page, plus the locked word range. Used by TTS to
+ * rebuild per-word ranges as it speaks, and to restore the highlight
+ * to the clicked word after speech ends.
+ */
+let currentSentenceAnchor: {
+  textNode: Text;
+  sentenceStartOffset: number;
+  wordRange: Range;
+} | null = null;
 
 // ─── Init ──────────────────────────────────────────────────────────
 
 let initialized = false;
+const listenerDocs = new Set<Document>();
 
-export function initClickFlow(): void {
-  if (initialized) return;
-  initialized = true;
+/**
+ * Initialises the click flow on the given document(s). Idempotent —
+ * each document only gets one set of listeners.
+ *
+ * @param docs Documents to install on. Defaults to the global document
+ *             (content scripts). Reader passes its main document plus
+ *             each EPUB iframe document as they're rendered.
+ */
+export function initClickFlow(...docs: Document[]): void {
+  const targets = docs.length ? docs : [document];
 
-  ensureHighlightStylesInjected();
-  // Warm both dictionary + translator off the critical path.
-  void ensureDictionaryLoaded().catch((err) => {
-    console.error("[click-flow] Failed to load CC-CEDICT:", err);
-  });
-  if (isTranslatorAvailable()) {
-    void prewarmTranslator();
+  if (!initialized) {
+    initialized = true;
+    ensureHighlightStylesInjected();
+    void ensureDictionaryLoaded().catch((err) => {
+      console.error("[click-flow] Failed to load CC-CEDICT:", err);
+    });
+    if (isTranslatorAvailable()) {
+      void prewarmTranslator();
+    }
+
+    setClickPopupDismissHandler(() => {
+      clearAllHighlights();
+      cancelSpeaking();
+      currentSentenceAnchor = null;
+    });
+    setClickPopupSpeakHandler(handleSpeak);
+    void ensureVoicesLoaded();
+
+    if (!sentenceProvider) {
+      // Default: route through the service worker.
+      sentenceProvider = defaultServiceWorkerProvider;
+      chrome.runtime.onMessage.addListener(onMessage);
+    }
   }
 
-  setClickPopupDismissHandler(() => {
-    clearAllHighlights();
+  for (const doc of targets) {
+    if (listenerDocs.has(doc)) continue;
+    listenerDocs.add(doc);
+    doc.addEventListener("mousemove", onMouseMove, { capture: true, passive: true });
+    doc.addEventListener("click", onClick, { capture: true });
+    doc.addEventListener("keydown", onKeyDown, { capture: true });
+  }
+}
+
+/** Removes click-flow listeners from a document (e.g. iframe unload). */
+export function removeClickFlowListeners(doc: Document): void {
+  if (!listenerDocs.has(doc)) return;
+  doc.removeEventListener("mousemove", onMouseMove, { capture: true } as EventListenerOptions);
+  doc.removeEventListener("click", onClick, { capture: true } as EventListenerOptions);
+  doc.removeEventListener("keydown", onKeyDown, { capture: true } as EventListenerOptions);
+  listenerDocs.delete(doc);
+}
+
+/**
+ * Default sentence-translation provider — sends the request to the
+ * service worker via chrome.runtime.sendMessage. Used by content
+ * scripts.
+ */
+function defaultServiceWorkerProvider(args: {
+  sentence: string;
+  pinyinStyle: PinyinStyle;
+  requestId: number;
+  onResponse: (msg: SentenceTranslateResponseLLM) => void;
+  onError: (msg: { error: string; code: string }) => void;
+}): void {
+  // Route the response through the chrome.runtime.onMessage listener
+  // installed in initClickFlow; no extra wiring needed here.
+  chrome.runtime.sendMessage({
+    type: "SENTENCE_TRANSLATE_REQUEST",
+    sentence: args.sentence,
+    pinyinStyle: args.pinyinStyle,
+    requestId: args.requestId,
   });
-
-  document.addEventListener("mousemove", onMouseMove, { capture: true, passive: true });
-  document.addEventListener("click", onClick, { capture: true });
-  document.addEventListener("keydown", onKeyDown, { capture: true });
-
-  chrome.runtime.onMessage.addListener(onMessage);
 }
 
 // ─── Mouse move (hover preview) ────────────────────────────────────
@@ -160,7 +294,8 @@ function onMouseMove(ev: MouseEvent): void {
 }
 
 function handleHover(ev: MouseEvent): void {
-  const caret = caretFromPoint(ev.clientX, ev.clientY);
+  const doc = sourceDocFromEvent(ev);
+  const caret = caretFromPoint(ev.clientX, ev.clientY, doc);
   if (!caret || caret.kind !== "text") {
     setHoverHighlight(null);
     return;
@@ -168,6 +303,13 @@ function handleHover(ev: MouseEvent): void {
 
   const range = previewRangeForCaret(caret);
   setHoverHighlight(range);
+}
+
+/** Returns the document an event originated from. For iframe events
+ *  this is the iframe's document, not the parent's. */
+function sourceDocFromEvent(ev: Event): Document {
+  const target = ev.target as Node | null;
+  return target?.ownerDocument ?? document;
 }
 
 /**
@@ -183,7 +325,8 @@ function previewRangeForCaret(caret: CaretPosition): Range | null {
 
   // Hot path: if we have an LLM segmentation for the sentence the caret
   // lives in, use those boundaries.
-  const sentence = detectSentence(caret.node as Text, offset);
+  const ownerDoc = (caret.node as Text).ownerDocument ?? document;
+  const sentence = detectSentence(caret.node as Text, offset, ownerDoc);
   if (sentence) {
     const state = sentenceStates.get(sentence.text);
     if (state && state.kind === "hot") {
@@ -267,7 +410,8 @@ function onClick(ev: MouseEvent): void {
   // We only handle primary-button clicks.
   if (ev.button !== 0) return;
 
-  const caret = caretFromPoint(ev.clientX, ev.clientY);
+  const doc = sourceDocFromEvent(ev);
+  const caret = caretFromPoint(ev.clientX, ev.clientY, doc);
   if (!caret || caret.kind !== "text") return;
   if (caret.offset >= caret.text.length) return;
   if (!containsChinese(caret.text[caret.offset])) return;
@@ -283,7 +427,10 @@ function onClick(ev: MouseEvent): void {
 }
 
 async function commitClick(caret: CaretPosition): Promise<void> {
-  const sentence = detectSentence(caret.node as Text, caret.offset);
+  // detectSentence creates a Range — must be the *same* document the
+  // text node belongs to (iframe doc when this fires from EPUB).
+  const ownerDoc = (caret.node as Text).ownerDocument ?? document;
+  const sentence = detectSentence(caret.node as Text, caret.offset, ownerDoc);
   if (!sentence) return;
 
   // Pick the word range using current state for this sentence.
@@ -293,26 +440,91 @@ async function commitClick(caret: CaretPosition): Promise<void> {
   const word = wordRange.toString();
   if (!word) return;
 
-  // Prepare Bootstrap word data (CC-CEDICT) + sentence highlight.
+  // ── Same-sentence retarget ────────────────────────────────────
+  //
+  // If the popup is already open for THIS sentence, clicking a
+  // different word just retargets the word tier (and the
+  // ::highlight(pt-word) range) without re-opening, re-firing the
+  // LLM, or losing the pinyin strip / sentence translation that's
+  // already on screen. Same-word click is a no-op (avoids flashing
+  // the popup on accidental double-clicks).
+  if (isPopupOpen() && getCurrentSentence() === sentence.text) {
+    if (getCurrentWordChars() === word) {
+      // Already showing this exact word; nothing to do.
+      setHoverHighlight(null);
+      return;
+    }
+    setWordHighlight(wordRange);
+    setHoverHighlight(null);
+    // Update the anchor so TTS restores to the new clicked word.
+    if (currentSentenceAnchor) {
+      currentSentenceAnchor.wordRange = wordRange.cloneRange();
+    }
+
+    const state = sentenceStates.get(sentence.text);
+    let wordData: { chars: string; pinyin: string; gloss: string };
+    if (state && state.kind === "hot") {
+      const match = state.words.find((w) => w.text === word);
+      wordData = match
+        ? { chars: match.text, pinyin: match.pinyin, gloss: match.gloss }
+        : buildBootstrapWord(word);
+    } else {
+      wordData = buildBootstrapWord(word);
+    }
+    retargetWord(wordData, sentence.text);
+    refreshPinyinStripActiveWord(word);
+    return;
+  }
+
+  // ── Fresh-sentence open ───────────────────────────────────────
   const bootstrapWord = buildBootstrapWord(word);
 
   setWordHighlight(wordRange);
   setSentenceHighlight(sentence.range);
   // Hover follows the cursor afterwards; clear the stale hover paint.
   setHoverHighlight(null);
+  // Cancel any TTS still running from a previous popup.
+  cancelSpeaking();
+
+  // Stash the sentence anchor so TTS can rebuild per-word ranges.
+  // We only support TTS when the sentence lives inside a single text
+  // node (which is the common case); for cross-node sentences the
+  // restore-range works but per-word highlighting may be approximate.
+  const startContainer = sentence.range.startContainer;
+  if (startContainer.nodeType === Node.TEXT_NODE) {
+    currentSentenceAnchor = {
+      textNode: startContainer as Text,
+      sentenceStartOffset: sentence.range.startOffset,
+      wordRange: wordRange.cloneRange(),
+    };
+  } else {
+    currentSentenceAnchor = null;
+  }
 
   const expectLlm = settings.llmEnabled;
   const expectBootstrapTranslation = isTranslatorAvailable();
 
-  const wordRect = wordRange.getBoundingClientRect();
+  const wordRect = safeRangeRect(wordRange);
+  const sentenceRect = safeRangeRect(sentence.range);
   showBootstrap({
     word: bootstrapWord,
     sentence: sentence.text,
+    sentenceWords: bootstrapSentenceWords(sentence.text),
     anchorRect: wordRect,
+    sentenceRect,
     theme: settings.theme,
     fontSize: settings.fontSize,
     expectLlm,
     expectBootstrapTranslation,
+    pinyinStyle: settings.pinyinStyle,
+    // Render the speaker button when TTS is enabled in settings.
+    // Don't gate on hasChineseVoice() at click time — voices in Chrome
+    // load asynchronously and the first popup often opens before the
+    // voiceschanged event fires. We just render the button; if no
+    // Chinese voice is ever available, speakSentence() falls through
+    // (the SpeechSynthesisUtterance with lang="zh-CN" will use the
+    // closest match or be silent — no crash, no error).
+    ttsEnabled: settings.ttsEnabled,
   });
 
   currentSentence = sentence.text;
@@ -342,13 +554,33 @@ async function commitClick(caret: CaretPosition): Promise<void> {
     });
   }
 
-  // Ask the SW for the Hot upgrade.
-  if (expectLlm) {
-    chrome.runtime.sendMessage({
-      type: "SENTENCE_TRANSLATE_REQUEST",
+  // Fire the host-integration commit hook (reader uses this for
+  // bookmark-anchor capture).
+  if (onCommit && currentSentenceAnchor) {
+    try {
+      onCommit({
+        sentence: sentence.text,
+        word,
+        textNode: currentSentenceAnchor.textNode,
+        offset: caret.offset,
+      });
+    } catch (err) {
+      console.error("[click-flow] commit hook threw:", err);
+    }
+  }
+
+  // Ask the LLM for the Hot upgrade through the registered provider.
+  if (expectLlm && sentenceProvider) {
+    sentenceProvider({
       sentence: sentence.text,
       pinyinStyle: settings.pinyinStyle,
       requestId,
+      onResponse: (msg) => handleSentenceLLM(msg),
+      onError: (e) => {
+        if (currentSentence === sentence.text && requestId === currentRequestId) {
+          setSentenceError(e.error);
+        }
+      },
     });
   }
 }
@@ -378,6 +610,64 @@ function pickWordRangeOnClick(
   }
 
   return buildTextRange(node, offset, offset + 1);
+}
+
+/**
+ * jsdom (used in tests) doesn't implement Range.getBoundingClientRect.
+ * Real browsers do. This helper returns a zero rect when the API is
+ * absent so positioning code can run without throwing in tests; in
+ * real browsers the actual rect is returned.
+ *
+ * For ranges that live inside an iframe (EPUB), the rect is relative
+ * to the iframe's viewport; the popup lives in the parent document so
+ * we add the iframe's bounding offset before returning. Result: the
+ * caller always gets parent-document coords.
+ */
+function safeRangeRect(range: Range): DOMRect {
+  const fn = (range as Range & { getBoundingClientRect?: () => DOMRect })
+    .getBoundingClientRect;
+  let raw: DOMRect | null = null;
+  if (typeof fn === "function") {
+    try {
+      raw = fn.call(range);
+    } catch {
+      raw = null;
+    }
+  }
+  if (!raw) return new DOMRect(0, 0, 0, 0);
+
+  // Translate to parent coords if range lives in an iframe.
+  const doc = range.startContainer.ownerDocument;
+  if (!doc || doc === document) return raw;
+  const frameEl = (doc.defaultView as Window & { frameElement?: Element | null })
+    ?.frameElement;
+  if (!frameEl) return raw;
+  const frameFn = (frameEl as Element & { getBoundingClientRect?: () => DOMRect })
+    .getBoundingClientRect;
+  if (typeof frameFn !== "function") return raw;
+  let frameRect: DOMRect;
+  try {
+    frameRect = frameFn.call(frameEl);
+  } catch {
+    return raw;
+  }
+  return new DOMRect(
+    raw.left + frameRect.left,
+    raw.top + frameRect.top,
+    raw.width,
+    raw.height,
+  );
+}
+
+/**
+ * Builds the initial pinyin-strip word list (Bootstrap state) by
+ * walking the sentence with CC-CEDICT longest-match. Returns just
+ * Chinese words; punctuation/non-CJK are filtered later by the strip
+ * renderer.
+ */
+function bootstrapSentenceWords(sentence: string): StripWord[] {
+  if (!isDictionaryReady()) return [];
+  return segmentSentence(sentence, settings.pinyinStyle);
 }
 
 function buildBootstrapWord(word: string): {
@@ -428,23 +718,19 @@ function handleSentenceLLM(msg: SentenceTranslateResponseLLM): void {
   if (!isShowingSentence(msg.sentence)) return;
   if (msg.requestId !== currentRequestId) return;
 
+  // Refresh the pinyin strip with LLM contextual segmentation.
+  const popupWord = currentClickedWord() ?? "";
+  upgradeStripWithLlm(msg.words, popupWord);
+
   // Find the clicked word in the LLM's segmentation. We don't know the
   // caret offset anymore at this point; we use the word currently shown
   // in the popup as the lookup key.
-  const popupWord = currentClickedWord();
   if (popupWord) {
     const match = msg.words.find((w) => w.text === popupWord);
     if (match) {
-      const formattedPinyin = match.pinyin
-        ? // The LLM returned a pre-formatted pinyin string already in the
-          // requested style; pass through. Falling back to CC-CEDICT
-          // formatting here would assume CC-CEDICT input which we don't
-          // have.
-          match.pinyin
-        : "";
       upgradeWord({
         chars: match.text,
-        pinyin: formattedPinyin,
+        pinyin: match.pinyin || "",
         gloss: match.gloss,
       });
     }
@@ -469,6 +755,7 @@ function applyHotData(
   sentence: string,
   clickedWord: string,
 ): void {
+  upgradeStripWithLlm(words, clickedWord);
   const match = words.find((w) => w.text === clickedWord);
   if (match) {
     upgradeWord({
@@ -482,6 +769,37 @@ function applyHotData(
   sentenceStates.set(sentence, { kind: "hot", words, translation });
 }
 
+// ─── TTS ───────────────────────────────────────────────────────────
+
+/**
+ * Fired when the user clicks the speaker button on the popup.
+ * Constructs the per-word timeline (using LLM segmentation when Hot,
+ * CC-CEDICT longest-match otherwise) and hands it to speakSentence.
+ */
+function handleSpeak(sentence: string): void {
+  if (!currentSentenceAnchor) return;
+  if (currentSentence !== sentence) return;
+
+  const state = sentenceStates.get(sentence);
+  let words: Array<{ text: string; pinyin: string }> = [];
+  if (state && state.kind === "hot") {
+    // Skip non-Chinese punctuation entries; their offsets stay implicit
+    // because the legacy timer model is char-rate-based and pinyin is
+    // unused for highlighting.
+    words = state.words.map((w) => ({ text: w.text, pinyin: w.pinyin }));
+  } else {
+    words = bootstrapSentenceWords(sentence);
+  }
+
+  speakSentence({
+    text: sentence,
+    words,
+    textNode: currentSentenceAnchor.textNode,
+    sentenceStartOffset: currentSentenceAnchor.sentenceStartOffset,
+    restoreRange: currentSentenceAnchor.wordRange,
+  });
+}
+
 // ─── Keyboard ──────────────────────────────────────────────────────
 
 function onKeyDown(ev: KeyboardEvent): void {
@@ -492,6 +810,62 @@ function onKeyDown(ev: KeyboardEvent): void {
       dismissPopup();
     }
   }
+}
+
+// ─── External entry points (right-click / shortcut / OCR strip) ───
+
+/**
+ * Synthesises a click on the first Chinese character of `selection`.
+ * Used by the right-click context menu and the Alt+Shift+P shortcut so
+ * the legacy "I have a selection, translate it" muscle memory still
+ * works under the click-flow.
+ */
+export function triggerFromSelection(selection: Selection | null): void {
+  if (!selection || selection.rangeCount === 0) return;
+  const range = selection.getRangeAt(0);
+  const node = range.startContainer;
+  if (node.nodeType !== Node.TEXT_NODE) return;
+  const textNode = node as Text;
+
+  // Find the first Chinese char at-or-after the selection's start
+  // offset within this text node.
+  let off = range.startOffset;
+  const data = textNode.data;
+  while (off < data.length && !/[㐀-䶿一-鿿]/.test(data[off])) {
+    off++;
+  }
+  if (off >= data.length) return;
+
+  void commitClick({
+    kind: "text",
+    node: textNode,
+    offset: off,
+    text: data,
+  }).catch((err) => {
+    console.error("[click-flow] triggerFromSelection failed:", err);
+  });
+}
+
+/**
+ * Synthesises a click on the first Chinese character inside `textNode`.
+ * Used by the OCR clickable result strip so the click flow runs against
+ * OCR'd text the same way it would against page text.
+ */
+export function triggerFromTextNode(textNode: Text, offset = 0): void {
+  const data = textNode.data;
+  let off = offset;
+  while (off < data.length && !/[㐀-䶿一-鿿]/.test(data[off])) {
+    off++;
+  }
+  if (off >= data.length) return;
+  void commitClick({
+    kind: "text",
+    node: textNode,
+    offset: off,
+    text: data,
+  }).catch((err) => {
+    console.error("[click-flow] triggerFromTextNode failed:", err);
+  });
 }
 
 // ─── Manual dismiss (used by the content script when a click outside

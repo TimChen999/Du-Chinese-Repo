@@ -162,18 +162,23 @@ function inputCaretFromPoint(
  * Builds a Range over [startOffset, endOffset) inside `textNode`. Used
  * by the highlight controller to materialize a range for the CSS Custom
  * Highlight API. Returns null if the offsets are out of bounds.
+ *
+ * Range MUST be created from the same document the text node belongs
+ * to (browsers throw WrongDocumentError otherwise). Defaults to the
+ * text node's owner document so iframe text nodes (EPUB) Just Work.
  */
 export function buildTextRange(
   textNode: Text,
   startOffset: number,
   endOffset: number,
-  doc: Document = document,
+  doc?: Document,
 ): Range | null {
   const len = textNode.data.length;
   if (startOffset < 0 || endOffset > len || startOffset >= endOffset) {
     return null;
   }
-  const range = doc.createRange();
+  const owningDoc = doc ?? textNode.ownerDocument ?? document;
+  const range = owningDoc.createRange();
   range.setStart(textNode, startOffset);
   range.setEnd(textNode, endOffset);
   return range;

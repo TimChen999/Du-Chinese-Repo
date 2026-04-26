@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { DEFAULT_SETTINGS } from "../../src/shared/constants";
-import type { PinyinRequest, PinyinResponseLocal } from "../../src/shared/types";
 import { mock } from "../test-helpers";
 
 vi.mock("../../src/background/vocab-store", () => ({
@@ -11,19 +10,16 @@ vi.mock("../../src/background/vocab-store", () => ({
   getAllVocab: vi.fn(() => Promise.resolve([])),
 }));
 
-vi.mock("../../src/background/cache", () => ({
-  hashText: vi.fn(() => Promise.resolve("mock-hash")),
-  getFromCache: vi.fn(() => Promise.resolve(null)),
-  getCachedError: vi.fn(() => Promise.resolve(null)),
-  saveToCache: vi.fn(() => Promise.resolve()),
-  saveErrorToCache: vi.fn(() => Promise.resolve()),
-  evictExpiredEntries: vi.fn(() => Promise.resolve()),
-  clearCache: vi.fn(() => Promise.resolve()),
+vi.mock("../../src/background/sentence-cache", () => ({
+  hashSentenceKey: vi.fn(() => Promise.resolve("sent:mock-hash")),
+  getSentenceFromCache: vi.fn(() => Promise.resolve(null)),
+  saveSentenceToCache: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock("../../src/background/llm-client", () => ({
-  queryLLM: vi.fn(() => Promise.resolve({ ok: false, error: { code: "UNKNOWN", message: "LLM request failed" } })),
-  validateLLMResponse: vi.fn(() => true),
+  queryLLMSentence: vi.fn(() =>
+    Promise.resolve({ ok: false, error: { code: "UNKNOWN", message: "LLM request failed" } }),
+  ),
 }));
 
 /**
@@ -60,13 +56,6 @@ async function loadServiceWorker() {
   return import("../../src/background/service-worker");
 }
 
-const SAMPLE_REQUEST: PinyinRequest = {
-  type: "PINYIN_REQUEST",
-  text: "你好",
-  context: "朋友说你好",
-  selectionRect: { top: 0, left: 0, bottom: 20, right: 50, width: 50, height: 20 },
-};
-
 describe("service-worker", () => {
   beforeEach(() => {
     ensureCommandsMock();
@@ -76,64 +65,67 @@ describe("service-worker", () => {
     mock(chrome.contextMenus.create).mockImplementation(() => 1);
   });
 
-  describe("message handling", () => {
-    it("responds to PINYIN_REQUEST with PINYIN_RESPONSE_LOCAL", async () => {
-      await loadServiceWorker();
+  describe("SENTENCE_TRANSLATE_REQUEST handler", () => {
+    it("returns cached sentence payload immediately on cache hit", async () => {
+      const { getSentenceFromCache } = await import("../../src/background/sentence-cache");
+      (getSentenceFromCache as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        translation: "Hello.",
+        words: [{ text: "你好", pinyin: "nǐ hǎo", gloss: "hello" }],
+      });
 
-      const sendResponse = vi.fn();
+      await loadServiceWorker();
 
       chrome.runtime.onMessage.callListeners(
-        SAMPLE_REQUEST,
+        {
+          type: "SENTENCE_TRANSLATE_REQUEST",
+          sentence: "你好。",
+          pinyinStyle: "toneMarks",
+          requestId: 7,
+        },
         { tab: { id: 1 } },
-        sendResponse,
+        vi.fn(),
       );
 
-      // sendResponse is called asynchronously after getSettings() resolves
-      await vi.waitFor(() => expect(sendResponse).toHaveBeenCalled());
-
-      const response: PinyinResponseLocal = sendResponse.mock.calls[0][0];
-      expect(response.type).toBe("PINYIN_RESPONSE_LOCAL");
-      expect(response.words.length).toBeGreaterThan(0);
-      expect(response.words.some((w) => w.chars.includes("你"))).toBe(true);
-    });
-
-    it("ignores messages with unknown type", async () => {
-      await loadServiceWorker();
-
-      const sendResponse = vi.fn();
-
-      const result = chrome.runtime.onMessage.callListeners(
-        { type: "UNKNOWN" },
-        { tab: { id: 1 } },
-        sendResponse,
+      await vi.waitFor(() =>
+        expect(chrome.tabs.sendMessage).toHaveBeenCalled(),
       );
-
-      // Give any async work a tick to settle
-      await new Promise((r) => setTimeout(r, 50));
-
-      expect(sendResponse).not.toHaveBeenCalled();
+      const call = mock(chrome.tabs.sendMessage).mock.calls.find(
+        (c: unknown[]) =>
+          (c[1] as { type?: string })?.type === "SENTENCE_TRANSLATE_RESPONSE_LLM",
+      );
+      expect(call).toBeDefined();
+      expect((call?.[1] as { translation?: string })?.translation).toBe("Hello.");
     });
 
-    it("returns words with correct pinyin style from settings", async () => {
+    it("emits SENTENCE_TRANSLATE_ERROR with code 'DISABLED' when LLM is off", async () => {
       mock(chrome.storage.sync.get).mockImplementation(() =>
-        Promise.resolve({ pinyinStyle: "toneNumbers" }),
+        Promise.resolve({ llmEnabled: false }),
       );
+      const { getSentenceFromCache } = await import("../../src/background/sentence-cache");
+      (getSentenceFromCache as ReturnType<typeof vi.fn>).mockResolvedValue(null);
 
       await loadServiceWorker();
 
-      const sendResponse = vi.fn();
-
       chrome.runtime.onMessage.callListeners(
-        SAMPLE_REQUEST,
+        {
+          type: "SENTENCE_TRANSLATE_REQUEST",
+          sentence: "你好。",
+          pinyinStyle: "toneMarks",
+          requestId: 1,
+        },
         { tab: { id: 1 } },
-        sendResponse,
+        vi.fn(),
       );
 
-      await vi.waitFor(() => expect(sendResponse).toHaveBeenCalled());
-
-      const response: PinyinResponseLocal = sendResponse.mock.calls[0][0];
-      const allPinyin = response.words.map((w) => w.pinyin).join(" ");
-      expect(allPinyin).toMatch(/[1-4]/);
+      await vi.waitFor(() =>
+        expect(chrome.tabs.sendMessage).toHaveBeenCalled(),
+      );
+      const errCall = mock(chrome.tabs.sendMessage).mock.calls.find(
+        (c: unknown[]) =>
+          (c[1] as { type?: string })?.type === "SENTENCE_TRANSLATE_ERROR",
+      );
+      expect(errCall).toBeDefined();
+      expect((errCall?.[1] as { code?: string })?.code).toBe("DISABLED");
     });
   });
 
@@ -182,63 +174,6 @@ describe("service-worker", () => {
   });
 
   describe("vocab recording", () => {
-    it("does not auto-record words on cache hit", async () => {
-      mock(chrome.storage.sync.get).mockImplementation(() =>
-        Promise.resolve({ llmEnabled: true, apiKey: "test-key" }),
-      );
-
-      const { getFromCache } = await import("../../src/background/cache");
-      const { recordWords } = await import("../../src/background/vocab-store");
-      (getFromCache as ReturnType<typeof vi.fn>).mockResolvedValue({
-        words: [{ chars: "你好", pinyin: "nǐ hǎo", definition: "hello" }],
-        translation: "Hello",
-      });
-
-      await loadServiceWorker();
-
-      const sendResponse = vi.fn();
-      chrome.runtime.onMessage.callListeners(
-        SAMPLE_REQUEST,
-        { tab: { id: 1 } },
-        sendResponse,
-      );
-
-      await vi.waitFor(() => expect(sendResponse).toHaveBeenCalled());
-      await new Promise((r) => setTimeout(r, 50));
-      expect(recordWords).not.toHaveBeenCalled();
-    });
-
-    it("does not auto-record words after successful LLM response", async () => {
-      mock(chrome.storage.sync.get).mockImplementation(() =>
-        Promise.resolve({ llmEnabled: true, apiKey: "test-key" }),
-      );
-
-      const { getFromCache } = await import("../../src/background/cache");
-      const { queryLLM } = await import("../../src/background/llm-client");
-      const { recordWords } = await import("../../src/background/vocab-store");
-      (getFromCache as ReturnType<typeof vi.fn>).mockResolvedValue(null);
-      (queryLLM as ReturnType<typeof vi.fn>).mockResolvedValue({
-        ok: true,
-        data: {
-          words: [{ chars: "你好", pinyin: "nǐ hǎo", definition: "hello" }],
-          translation: "Hello",
-        },
-      });
-
-      await loadServiceWorker();
-
-      const sendResponse = vi.fn();
-      chrome.runtime.onMessage.callListeners(
-        SAMPLE_REQUEST,
-        { tab: { id: 1 } },
-        sendResponse,
-      );
-
-      await vi.waitFor(() => expect(sendResponse).toHaveBeenCalled());
-      await new Promise((r) => setTimeout(r, 50));
-      expect(recordWords).not.toHaveBeenCalled();
-    });
-
     it("RECORD_WORD without an example persists the word and no example slot", async () => {
       const { recordWords } = await import("../../src/background/vocab-store");
       (recordWords as ReturnType<typeof vi.fn>).mockClear();

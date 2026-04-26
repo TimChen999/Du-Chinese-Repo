@@ -11,39 +11,30 @@
  *      READER_SPEC.md Section 10 "Reading State Persistence".
  */
 
-import { convertToPinyin } from "../background/pinyin-service";
-import { queryLLM, type LLMResult } from "../background/llm-client";
-import {
-  hashText,
-  getFromCache,
-  getCachedError,
-  saveToCache,
-  saveErrorToCache,
-} from "../background/cache";
-import { containsChinese, sentenceContextAround } from "../shared/chinese-detect";
+import { containsChinese } from "../shared/chinese-detect";
 import { handleVocabCapture } from "../shared/vocab-capture";
 import {
-  isTranslatorAvailable,
-  translateChineseToEnglish,
-} from "../shared/translate-example";
-import { runFallbackTranslation } from "../shared/fallback-translation";
+  initClickFlow,
+  setClickFlowSettings,
+  setOnSentenceCommit,
+  setSentenceTranslationProvider,
+  dismissClickFlow,
+} from "../content/click-flow";
+import { setClickPopupVocabCallback } from "../content/click-popup";
+import { ensureHighlightStylesInjected } from "../content/page-highlight";
+import { queryLLMSentence } from "../background/llm-client";
 import {
-  showOverlay,
-  updateOverlay,
-  updateOverlayFallback,
-  showOverlayError,
-  dismissOverlay,
-  setVocabCallback,
-  setOverlayContext,
-} from "../content/overlay";
+  hashSentenceKey,
+  getSentenceFromCache,
+  saveSentenceToCache,
+} from "../background/sentence-cache";
 import {
   DEFAULT_SETTINGS,
   PROVIDER_PRESETS,
-  MAX_SELECTION_LENGTH,
   LLM_MAX_TOKENS,
   LLM_TEMPERATURE,
 } from "../shared/constants";
-import type { ExtensionSettings, LLMConfig, WordData } from "../shared/types";
+import type { ExtensionSettings, LLMConfig } from "../shared/types";
 import {
   partitionDropdownTheme,
   resolveEffectiveTheme,
@@ -229,14 +220,6 @@ function waitTwoFrames(): Promise<void> {
     requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
   });
 }
-
-/**
- * Map<cacheKey, in-flight queryLLM Promise>. Mirrors the dedup map in
- * the background service worker so that rapid re-renders, scroll
- * relocations, and repeat selections in the reader don't fire multiple
- * concurrent calls for the same text+context. Cleared in .finally().
- */
-const inflightLLM = new Map<string, Promise<LLMResult>>();
 
 // ─── DOM references ────────────────────────────────────────────────
 
@@ -551,108 +534,69 @@ export async function openRecentFile(
   await openFile(file, els, handle);
 }
 
-// ─── Pinyin integration (two-phase) ────────────────────────────────
+// ─── Pinyin integration ───────────────────────────────────────────
+//
+// The legacy two-phase reader pipeline (processSelection + showOverlay
+// + queryLLM + cache.ts + runFallbackTranslation + runQuickTranslation
+// Preview) has been retired. All renderers now route lookups through
+// the click-flow installed in initReader(); the reader-side direct
+// sentence-translation provider (readerSentenceProvider, defined
+// below) calls queryLLMSentence + sentence-cache directly without a
+// service-worker round-trip.
 
-async function processSelection(
-  text: string,
-  rect: DOMRect,
-): Promise<void> {
-  const requestId = ++currentRequestId;
-  const truncated = text.length > MAX_SELECTION_LENGTH
-    ? text.slice(0, MAX_SELECTION_LENGTH)
-    : text;
 
+// ─── Click-flow integration (sentence-mode) ────────────────────────
+
+/**
+ * Reader-side sentence translation provider for click-flow. The
+ * reader runs in an extension page so it can call queryLLMSentence
+ * directly — no service-worker round-trip required, which keeps
+ * latency lower than the content script's path.
+ *
+ * Layered: cache hit → bypass network entirely. Settings → choose
+ * provider/model. Errors → surfaced to the popup via onError.
+ */
+async function readerSentenceProvider(args: {
+  sentence: string;
+  pinyinStyle: import("../shared/types").PinyinStyle;
+  requestId: number;
+  onResponse: (msg: import("../shared/types").SentenceTranslateResponseLLM) => void;
+  onError: (msg: { error: string; code: string }) => void;
+}): Promise<void> {
   const settings = await getExtensionSettings();
-  const words = convertToPinyin(truncated, settings.pinyinStyle);
-  if (requestId !== currentRequestId) return;
-
-  // Capture word-precise anchor before showing the overlay so the
-  // anchor reflects the same selection the user is looking up. Done
-  // here (after the requestId check) so a stale selection from a
-  // superseded request can't overwrite a newer one.
-  const anchor = currentRenderer?.captureAnchor();
-  if (anchor) lastCapturedAnchor = anchor;
-
-  // Sentence-bounded context: pivot off the actual selection inside the
-  // visible page text so the prompt carries only the surrounding
-  // sentence(s) instead of the whole spine. Stabilizes the cache key
-  // (scroll no longer perturbs the hash) and shrinks prefill cost.
-  // Also stashed on the overlay so the "+ Vocab" button can ship it
-  // to the service worker for the example-quality gate.
-  //
-  // We pass `truncated` as the anchor so the renderer slices a window
-  // *centered on the selection* instead of just the leading prefix --
-  // otherwise mid-chapter lookups (selection past the prefix cap)
-  // would arrive at sentenceContextAround with a fullText that doesn't
-  // contain the selection, fall back to returning just the selection
-  // itself, and fail the example-quality gate every time.
-  const visible = currentRenderer?.getVisibleText(truncated) ?? "";
-  const context = sentenceContextAround(visible, truncated);
-  setOverlayContext(context);
-
-  // Mirror the content-script gate (see src/content/content.ts): when
-  // the user has AI Translations off, fall back to Chrome's on-device
-  // Translator API for both the full sentence and per-segment glosses.
-  // Loading row is reserved when either path will fill it, so the
-  // overlay's height doesn't jump from "pinyin only" to "pinyin +
-  // translation" mid-render.
-  const willUseFallback = !settings.llmEnabled && isTranslatorAvailable();
-  const expectTranslation = settings.llmEnabled || willUseFallback;
-
-  showOverlay(
-    words,
-    rect,
-    settings.theme,
-    settings.ttsEnabled,
-    expectTranslation,
-    settings.fontSize,
+  const cacheKey = await hashSentenceKey(
+    args.sentence,
+    args.pinyinStyle,
+    settings.provider,
+    settings.model,
   );
 
-  if (!readerSettings.pinyinEnabled) return;
+  const cached = await getSentenceFromCache(cacheKey);
+  if (cached) {
+    args.onResponse({
+      type: "SENTENCE_TRANSLATE_RESPONSE_LLM",
+      sentence: args.sentence,
+      requestId: args.requestId,
+      translation: cached.translation,
+      words: cached.words,
+    });
+    return;
+  }
 
   if (!settings.llmEnabled) {
-    if (willUseFallback) {
-      await runFallbackTranslation(truncated, words, {
-        isStale: () => requestId !== currentRequestId,
-        onPaint: (enriched, translation) => {
-          updateOverlayFallback(enriched, translation, settings.ttsEnabled);
-        },
-        onError: (msg) => showOverlayError(msg),
-      });
-    }
-    return;
-  }
-
-  let llmTranslationRendered = false;
-  if (isTranslatorAvailable()) {
-    void runQuickTranslationPreview(
-      truncated,
-      words,
-      settings.ttsEnabled,
-      () => requestId !== currentRequestId || llmTranslationRendered,
-    );
-  }
-
-  const cacheKey = await hashText(truncated + context);
-
-  const cached = await getFromCache(cacheKey);
-  if (cached) {
-    if (requestId !== currentRequestId) return;
-    llmTranslationRendered = true;
-    updateOverlay(cached.words, cached.translation, settings.ttsEnabled);
-    return;
-  }
-
-  const cachedErr = await getCachedError(cacheKey);
-  if (cachedErr) {
-    if (requestId !== currentRequestId) return;
-    showOverlayError(cachedErr.message);
+    args.onError({
+      error: "AI Translations are disabled in settings.",
+      code: "DISABLED",
+    });
     return;
   }
 
   const preset = PROVIDER_PRESETS[settings.provider];
   if (preset.requiresApiKey && !settings.apiKey) {
-    showOverlayError("Set up an API key in extension settings for translations.");
+    args.onError({
+      error: "Set up an API key in extension settings for translations.",
+      code: "AUTH_FAILED",
+    });
     return;
   }
 
@@ -665,74 +609,37 @@ async function processSelection(
     temperature: LLM_TEMPERATURE,
   };
 
-  const result = await dedupedQueryLLM(
-    cacheKey,
-    truncated,
-    context,
-    config,
-    settings.pinyinStyle,
-  );
-
-  if (requestId !== currentRequestId) return;
-
+  const result = await queryLLMSentence(args.sentence, args.pinyinStyle, config);
   if (result.ok) {
-    if (!result.data.partial) {
-      await saveToCache(cacheKey, result.data);
-    }
-    llmTranslationRendered = true;
-    updateOverlay(result.data.words, result.data.translation, settings.ttsEnabled);
+    await saveSentenceToCache(cacheKey, result.data);
+    args.onResponse({
+      type: "SENTENCE_TRANSLATE_RESPONSE_LLM",
+      sentence: args.sentence,
+      requestId: args.requestId,
+      translation: result.data.translation,
+      words: result.data.words,
+    });
   } else {
-    await saveErrorToCache(cacheKey, result.error);
-    showOverlayError(result.error.message);
+    args.onError({ error: result.error.message, code: result.error.code });
   }
 }
 
 /**
- * Reader-side LLM quick preview. Shows only the on-device full-text
- * translation while the LLM work continues; contextual word grouping
- * and definitions still come exclusively from the LLM path.
+ * Reads ExtensionSettings + ReaderSettings, pushes the click-flow's
+ * relevant inputs (theme, font size, pinyinStyle, llmEnabled,
+ * ttsEnabled, clickFlowEnabled). Reader-specific theme handling
+ * resolves "sepia" to a concrete value.
  */
-async function runQuickTranslationPreview(
-  text: string,
-  words: WordData[],
-  ttsEnabled: boolean,
-  isStale: () => boolean,
-): Promise<void> {
-  const result = await translateChineseToEnglish(text);
-  if (!result.ok || isStale()) return;
-
-  updateOverlayFallback(
-    words.map((w) => ({
-      chars: w.chars,
-      pinyin: w.pinyin,
-      definition: w.definition ?? "",
-    })),
-    result.translation,
-    ttsEnabled,
-  );
-}
-
-
-/**
- * Dedup wrapper around queryLLM that shares one in-flight Promise per
- * cacheKey. Prevents the reader from firing N concurrent identical
- * requests when the user re-clicks during a slow first response.
- */
-function dedupedQueryLLM(
-  cacheKey: string,
-  text: string,
-  context: string,
-  config: LLMConfig,
-  pinyinStyle: ExtensionSettings["pinyinStyle"],
-): Promise<LLMResult> {
-  const existing = inflightLLM.get(cacheKey);
-  if (existing) return existing;
-
-  const p = queryLLM(text, context, config, pinyinStyle).finally(() => {
-    inflightLLM.delete(cacheKey);
+async function pushClickFlowSettings(): Promise<void> {
+  const ext = await getExtensionSettings();
+  setClickFlowSettings({
+    theme: currentSharedTheme,
+    fontSize: ext.fontSize,
+    pinyinStyle: ext.pinyinStyle,
+    llmEnabled: ext.llmEnabled,
+    ttsEnabled: ext.ttsEnabled,
+    clickFlowEnabled: readerSettings.pinyinEnabled,
   });
-  inflightLLM.set(cacheKey, p);
-  return p;
 }
 
 // ─── Forward iframe key events to parent navigation ────────────────
@@ -757,82 +664,45 @@ function attachKeyHandler(
 // ─── Selection handling ────────────────────────────────────────────
 
 /**
- * EPUB renders inside an iframe with its own document, so we wire
- * epub.js's "selected" event and translate iframe-local coordinates
- * to the reader-page coordinate space before showing the overlay.
+ * EPUB renders each spine page inside its own iframe with its own
+ * document. We hook epub.js's per-iframe "rendered" event so we can
+ * install click-flow listeners + inject the `::highlight()` CSS rules
+ * into each iframe document. The popup itself lives in the parent
+ * document; click-flow translates iframe-relative rects to parent
+ * coords for positioning.
  *
- * Every other format renders directly into #reader-content in the
- * reader-page document, so the standard Selection API works without
- * coordinate translation. That generic handler is attached once in
- * initReader() (see attachGenericSelectionHandler) and is gated on
- * `currentRenderer instanceof EpubRenderer === false`.
+ * Bookmark anchor capture: when click-flow's commit hook fires, we
+ * also drive `recordSelectedAnchor` here using the iframe's selection
+ * (epub.js gives us the CFI on its "selected" event, which still
+ * fires alongside the click).
  */
-function attachSelectionHandler(renderer: FormatRenderer): void {
+function attachClickFlowToEpub(renderer: FormatRenderer): void {
   if (!(renderer instanceof EpubRenderer)) return;
+
+  renderer.onIframeRendered((iframeDoc) => {
+    if (!readerSettings.pinyinEnabled) return;
+    ensureHighlightStylesInjected(iframeDoc);
+    initClickFlow(iframeDoc);
+  });
+
+  // epub.js still fires "selected" when the user drag-selects inside
+  // an iframe; we use that event purely to record the bookmark anchor
+  // (CFI). The click-flow handles the popup itself.
   const rendition = renderer.getRendition();
   if (!rendition) return;
-
   rendition.on("selected", (cfiRange: string, contents: any) => {
     if (!readerSettings.pinyinEnabled) return;
-
     const selection = contents.window.getSelection();
     if (!selection || selection.isCollapsed) return;
-
     const text = selection.toString().trim();
     if (!text || !containsChinese(text)) return;
-
-    // Stash CFI + context BEFORE processSelection so its captureAnchor
-    // call sees the freshly recorded anchor. epub.js gives us the
-    // range-level CFI directly here -- the only place it's available
-    // without re-parsing the iframe DOM.
-    if (renderer instanceof EpubRenderer) {
-      renderer.recordSelectedAnchor(cfiRange, text, contents);
-    }
-
-    const range = selection.getRangeAt(0);
-    const rect = range.getBoundingClientRect();
-
-    const frameEl = contents.document.defaultView?.frameElement;
-    if (frameEl) {
-      const iframeRect = frameEl.getBoundingClientRect();
-      const adjustedRect = new DOMRect(
-        rect.left + iframeRect.left,
-        rect.top + iframeRect.top,
-        rect.width,
-        rect.height,
-      );
-      processSelection(text, adjustedRect);
-    } else {
-      processSelection(text, rect);
-    }
+    renderer.recordSelectedAnchor(cfiRange, text, contents);
   });
 }
 
-/**
- * Single mouseup listener bound once in initReader(). Handles every
- * non-EPUB renderer (text, markdown, HTML, DOCX, subtitles, PDF).
- *
- * Bound at the readerContent level rather than document so we don't
- * fight the existing document-level mousedown listener that dismisses
- * the overlay on outside clicks.
- */
-function attachGenericSelectionHandler(els: ReturnType<typeof getElements>): void {
-  els.readerContent.addEventListener("mouseup", () => {
-    if (!currentRenderer) return;
-    if (currentRenderer instanceof EpubRenderer) return;
-    if (!readerSettings.pinyinEnabled) return;
-
-    const selection = window.getSelection();
-    if (!selection || selection.isCollapsed) return;
-
-    const text = selection.toString().trim();
-    if (!text || !containsChinese(text)) return;
-
-    const range = selection.getRangeAt(0);
-    const rect = range.getBoundingClientRect();
-    processSelection(text, rect);
-  });
-}
+// Non-EPUB renderers route single-click lookups through the click-
+// flow installed in initReader(); the legacy mouseup-based handler
+// that used to live here was retired in favor of that flow.
 
 // ─── Core file loading ─────────────────────────────────────────────
 
@@ -907,7 +777,7 @@ async function openFile(
   }
   await renderer.renderTo(els.readerContent);
   renderer.applySettings(effectiveReaderSettings());
-  attachSelectionHandler(renderer);
+  attachClickFlowToEpub(renderer);
   attachKeyHandler(renderer, els);
 
   renderer.onRelocated((spineIndex) => {
@@ -1255,6 +1125,9 @@ async function goToLanding(els: ReturnType<typeof getElements>): Promise<void> {
     currentRenderer.destroy();
     currentRenderer = null;
   }
+  // Tear down any open click-flow popup so it doesn't anchor over the
+  // landing screen.
+  dismissClickFlow();
   currentMetadata = null;
   currentFileHash = "";
 
@@ -1300,6 +1173,33 @@ export async function initReader(): Promise<void> {
     }
     storageChangeListener = (changes, area) => {
       if (area !== "sync") return;
+      // Push relevant changes into the click-flow settings cache.
+      const cfPatch: Partial<{
+        theme: ExtensionSettings["theme"];
+        fontSize: number;
+        pinyinStyle: ExtensionSettings["pinyinStyle"];
+        llmEnabled: boolean;
+        ttsEnabled: boolean;
+      }> = {};
+      if (changes.theme && typeof changes.theme.newValue !== "undefined") {
+        cfPatch.theme = changes.theme.newValue as ExtensionSettings["theme"];
+      }
+      if (typeof changes.fontSize?.newValue === "number") {
+        cfPatch.fontSize = changes.fontSize.newValue;
+      }
+      if (changes.pinyinStyle?.newValue) {
+        cfPatch.pinyinStyle = changes.pinyinStyle.newValue as ExtensionSettings["pinyinStyle"];
+      }
+      if (typeof changes.llmEnabled?.newValue === "boolean") {
+        cfPatch.llmEnabled = changes.llmEnabled.newValue;
+      }
+      if (typeof changes.ttsEnabled?.newValue === "boolean") {
+        cfPatch.ttsEnabled = changes.ttsEnabled.newValue;
+      }
+      if (Object.keys(cfPatch).length > 0) {
+        setClickFlowSettings(cfPatch);
+      }
+
       const change = changes.theme;
       if (!change) return;
       const next = change.newValue;
@@ -1334,14 +1234,41 @@ export async function initReader(): Promise<void> {
   // Shared "+ Vocab" pipeline -- same handler the in-page content
   // script registers, so reader captures stay on one wire format.
   // See src/shared/vocab-capture.ts.
-  setVocabCallback(handleVocabCapture);
+  setClickPopupVocabCallback(handleVocabCapture);
+
+  // ── Click-flow integration ────────────────────────────────────
+  //
+  // The reader runs in an extension page so it can call the LLM
+  // client directly (no service-worker round-trip). We register a
+  // reader-side sentence-translation provider before initClickFlow
+  // so the default (chrome.runtime.sendMessage to SW) isn't used.
+  //
+  // EPUB renders each spine page into its own iframe; click-flow's
+  // initClickFlow(iframeDoc) is wired up per-render via
+  // attachClickFlowToEpub() — the EpubRenderer fires onIframeRendered
+  // callbacks on every "rendered" event, and we attach listeners +
+  // inject ::highlight() rules per iframe. Popup positioning translates
+  // iframe-relative rects to parent coords inside click-flow.
+  setSentenceTranslationProvider(readerSentenceProvider);
+  setOnSentenceCommit(() => {
+    // Capture word-precise anchor on every fresh-sentence click so
+    // reopening this book lands exactly where the user looked. Works
+    // for every renderer including EPUB (recordSelectedAnchor is
+    // driven by the iframe's "selected" event).
+    if (currentRenderer) {
+      const anchor = currentRenderer.captureAnchor();
+      if (anchor) lastCapturedAnchor = anchor;
+    }
+  });
+  await pushClickFlowSettings();
+  initClickFlow();
 
   await renderRecentFiles(els);
 
-  // Bound once for the lifetime of the reader page; gated on the
-  // active renderer's type so EPUB's iframe-aware handler stays
-  // authoritative for that format.
-  attachGenericSelectionHandler(els);
+  // Click-flow listeners (installed in initClickFlow above) own
+  // every renderer's lookups. EPUB additionally hooks each rendered
+  // iframe via attachClickFlowToEpub() so click-flow listeners reach
+  // into the iframe document tree.
 
   els.openFileBtn?.addEventListener("click", () => {
     goToLanding(els);
@@ -1507,7 +1434,7 @@ export async function initReader(): Promise<void> {
         readerSettings.readingMode,
         effectiveReaderSettings(),
       );
-      attachSelectionHandler(currentRenderer);
+      attachClickFlowToEpub(currentRenderer);
       attachKeyHandler(currentRenderer, els);
       // applyReadingMode rebuilds the rendition and only restores the
       // chapter-level CFI; refine to the exact word if we have one.
@@ -1558,7 +1485,7 @@ export async function initReader(): Promise<void> {
       if (e.key === "ArrowLeft") els.prevBtn.click();
       else els.nextBtn.click();
     } else if (e.key === "Escape") {
-      dismissOverlay();
+      dismissClickFlow();
       // Escape also closes the bookmark menu so the user has a single
       // dismiss key for both the overlay and any toolbar popover.
       if (!els.bookmarkMenu.classList.contains("hidden")) {
@@ -1577,7 +1504,7 @@ export async function initReader(): Promise<void> {
   document.addEventListener("mousedown", (e) => {
     const root = document.getElementById("hg-extension-root");
     if (root && !root.contains(e.target as Node)) {
-      dismissOverlay();
+      dismissClickFlow();
     }
     // Close the bookmark popover when clicking outside it (and outside
     // its toggle button -- the toggle has its own click handler that
