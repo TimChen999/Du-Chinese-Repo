@@ -130,7 +130,7 @@ body { background: var(--bg); color: var(--text); accent-color: var(--accent); c
 }
 
 .bookmark-list-item {
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: stretch; gap: 8px;
   padding: 8px 12px 8px 16px;
   border-left: 3px solid transparent;
   transition: background 0.15s, border-color 0.15s;
@@ -140,12 +140,32 @@ body { background: var(--bg); color: var(--text); accent-color: var(--accent); c
   border-left-color: var(--accent);
 }
 
-.bookmark-snippet {
+/* Whole row is one click target. The primary line is plain ASCII
+   metadata so the user clicks reliably even when the snippet below
+   contains Chinese characters. */
+.bookmark-jump {
   flex: 1; min-width: 0;
+  display: flex; flex-direction: column; gap: 2px;
   background: none; border: none; padding: 0;
   cursor: pointer; text-align: left;
-  color: var(--text); font-family: inherit; font-size: 0.85em;
-  line-height: 1.4; overflow: hidden;
+  color: var(--text); font-family: inherit;
+}
+.bookmark-jump:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px; border-radius: 3px;
+}
+
+.bookmark-primary {
+  font-size: 0.85em; font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.bookmark-snippet {
+  font-size: 0.75em;
+  line-height: 1.35;
+  color: var(--pinyin);
+  overflow: hidden;
   /* Two-line clamp keeps the snippet readable without runaway height. */
   display: -webkit-box;
   -webkit-line-clamp: 2;

@@ -159,6 +159,21 @@ export interface ManualBookmark {
   anchor: BookmarkAnchor;
   label: string;
   createdAt: number;
+  /**
+   * 0-based chapter / spine / page index captured at save time. Used by
+   * the bookmark list to render a non-Chinese primary label like
+   * "Chapter 5", which sidesteps the click-flow's word-lookup intercept
+   * (clicking on Chinese characters inside the row used to fire the
+   * popup instead of jumping to the bookmark). Optional so existing
+   * stored bookmarks (pre-this-field) still load.
+   */
+  chapterIndex?: number;
+  /**
+   * Best-effort human-readable chapter name pulled from the renderer's
+   * TOC at save time, e.g. "第三章 觉醒". Falls back to "Chapter N+1"
+   * in the UI when absent.
+   */
+  chapterLabel?: string;
 }
 
 export const MAX_BOOKMARKS_PER_FILE = 100;

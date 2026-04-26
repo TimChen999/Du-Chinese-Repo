@@ -1028,6 +1028,28 @@ function appendBookmarkEmptyState(els: ReturnType<typeof getElements>): void {
   els.bookmarkList.appendChild(empty);
 }
 
+/**
+ * Format the bookmark's primary line — a non-Chinese, scannable label
+ * the user can confidently click without the click-flow's word-lookup
+ * hijacking it. Pattern: "Chapter N · Apr 26" with optional TOC name
+ * appended when one was captured at save time.
+ */
+function formatBookmarkPrimary(bm: ManualBookmark): string {
+  const date = new Date(bm.createdAt);
+  const dateStr = date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+  let head: string;
+  if (typeof bm.chapterIndex === "number" && bm.chapterIndex >= 0) {
+    head = `Chapter ${bm.chapterIndex + 1}`;
+    if (bm.chapterLabel) head += ` · ${bm.chapterLabel}`;
+  } else {
+    head = "Bookmark";
+  }
+  return `${head} · ${dateStr}`;
+}
+
 function buildBookmarkRow(
   els: ReturnType<typeof getElements>,
   bm: ManualBookmark,
@@ -1036,12 +1058,33 @@ function buildBookmarkRow(
   row.className = "bookmark-list-item";
   row.dataset.bookmarkId = bm.id;
 
-  const snippet = document.createElement("button");
-  snippet.type = "button";
-  snippet.className = "bookmark-snippet";
-  snippet.textContent = bm.label || "(empty bookmark)";
-  snippet.title = "Jump to bookmark";
-  snippet.addEventListener("click", async () => {
+  // Primary jump target. The whole button is one click target so the
+  // user can't miss; its visible content is plain ASCII metadata, which
+  // means click-flow has nothing to intercept even without the
+  // [data-no-clickflow] guard on the parent.
+  const jump = document.createElement("button");
+  jump.type = "button";
+  jump.className = "bookmark-jump";
+  jump.title = "Jump to bookmark";
+
+  const primary = document.createElement("span");
+  primary.className = "bookmark-primary";
+  primary.textContent = formatBookmarkPrimary(bm);
+  jump.appendChild(primary);
+
+  // Snippet is decorative context only — small, dimmed, two-line clamp.
+  // It is *inside* the jump button, so clicking on the Chinese chars
+  // still fires the jump handler (helped by the sidebar's
+  // data-no-clickflow opt-out so click-flow doesn't preempt).
+  const snippetText = (bm.label ?? "").trim();
+  if (snippetText) {
+    const snippet = document.createElement("span");
+    snippet.className = "bookmark-snippet";
+    snippet.textContent = snippetText;
+    jump.appendChild(snippet);
+  }
+
+  jump.addEventListener("click", async () => {
     await jumpToBookmark(els, bm);
   });
 
@@ -1059,7 +1102,7 @@ function buildBookmarkRow(
     await renderBookmarkList(els);
   });
 
-  row.append(snippet, del);
+  row.append(jump, del);
   return row;
 }
 
@@ -1100,10 +1143,51 @@ async function handleAddBookmark(els: ReturnType<typeof getElements>): Promise<v
     );
     return;
   }
-  await storeAddBookmark(currentFileHash, lastCapturedAnchor);
+  // Snapshot the chapter info at save time. Stored on the bookmark so
+  // the list can render a non-Chinese primary label even after the
+  // user has navigated elsewhere.
+  const chapterIndex = currentMetadata?.currentChapter;
+  const chapterLabel =
+    chapterIndex !== undefined
+      ? resolveTocLabelForChapter(chapterIndex)
+      : undefined;
+  await storeAddBookmark(currentFileHash, lastCapturedAnchor, undefined, {
+    index: chapterIndex,
+    label: chapterLabel,
+  });
   await renderBookmarkList(els);
   closeBookmarkMenu(els);
   showToast(els, "Bookmark added");
+}
+
+/**
+ * Best-effort lookup of a TOC label for the given chapter / spine
+ * index. Walks the TOC depth-first and asks the renderer to map each
+ * entry's href back to its spine index; the deepest matching entry's
+ * label wins (so a sub-chapter "Section 2.3" beats the parent
+ * "Chapter 2" when both resolve to the same spine item). Returns
+ * undefined when the renderer / metadata aren't available yet or
+ * nothing matches — the UI falls back to "Chapter N+1" alone in
+ * that case.
+ */
+function resolveTocLabelForChapter(chapterIndex: number): string | undefined {
+  if (!currentRenderer || !currentMetadata) return undefined;
+  let best: { label: string; level: number } | undefined;
+  const walk = (entries: TocEntry[], level: number): void => {
+    for (const entry of entries) {
+      try {
+        const idx = currentRenderer!.getSpineIndex(entry.href);
+        if (idx === chapterIndex && (!best || level > best.level)) {
+          best = { label: entry.label, level };
+        }
+      } catch {
+        // Some renderers throw on unknown hrefs; treat as a non-match.
+      }
+      if (entry.children?.length) walk(entry.children, level + 1);
+    }
+  };
+  walk(currentMetadata.toc, 0);
+  return best?.label;
 }
 
 // ─── Return to landing ─────────────────────────────────────────────

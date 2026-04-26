@@ -103,6 +103,24 @@ describe("bookmarks-store", () => {
       expect(list).toHaveLength(1);
       expect(list[0].id).toBe(bm.id);
     });
+
+    it("persists chapterIndex and chapterLabel when supplied", async () => {
+      const bm = await addBookmark("file1", sampleAnchor(), undefined, {
+        index: 4,
+        label: "第五章",
+      });
+      expect(bm.chapterIndex).toBe(4);
+      expect(bm.chapterLabel).toBe("第五章");
+      const [restored] = await listBookmarks("file1");
+      expect(restored.chapterIndex).toBe(4);
+      expect(restored.chapterLabel).toBe("第五章");
+    });
+
+    it("omits chapter fields entirely when chapter info is absent", async () => {
+      const bm = await addBookmark("file1", sampleAnchor());
+      expect("chapterIndex" in bm).toBe(false);
+      expect("chapterLabel" in bm).toBe(false);
+    });
   });
 
   describe("ordering", () => {

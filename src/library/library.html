@@ -56,7 +56,11 @@
         </aside>
 
         <!-- Sidebar: Bookmarks (mutually exclusive with TOC sidebar) -->
-        <aside id="bookmark-sidebar" class="bookmark-sidebar collapsed">
+        <!-- data-no-clickflow tells the page-level click-flow to skip
+             every event whose target is inside this subtree, so rows
+             remain clickable as "jump to bookmark" even when their
+             snippet contains Chinese characters. -->
+        <aside id="bookmark-sidebar" class="bookmark-sidebar collapsed" data-no-clickflow>
           <h3 class="sidebar-heading">Bookmarks</h3>
           <div id="bookmark-list" class="bookmark-list" aria-label="Bookmarks"></div>
         </aside>

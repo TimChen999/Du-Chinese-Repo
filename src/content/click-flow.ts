@@ -282,6 +282,14 @@ function onMouseMove(ev: MouseEvent): void {
     return;
   }
 
+  // Opt-out zone: any ancestor marked [data-no-clickflow] (e.g. the
+  // reader's bookmark sidebar) is excluded so its own buttons stay
+  // clickable when they happen to contain Chinese text.
+  if (isInNoClickflowZone(ev.target)) {
+    setHoverHighlight(null);
+    return;
+  }
+
   lastHoverEvent = ev;
   if (pendingHoverFrame) return;
   pendingHoverFrame = requestAnimationFrame(() => {
@@ -310,6 +318,20 @@ function handleHover(ev: MouseEvent): void {
 function sourceDocFromEvent(ev: Event): Document {
   const target = ev.target as Node | null;
   return target?.ownerDocument ?? document;
+}
+
+/** True when the event target is inside an ancestor opted out of
+ *  click-flow via the `data-no-clickflow` attribute. Used by the
+ *  reader's bookmark sidebar so rows containing Chinese text remain
+ *  clickable instead of triggering a word lookup. */
+function isInNoClickflowZone(target: EventTarget | null): boolean {
+  const node = target as Node | null;
+  if (!node) return false;
+  const el =
+    node.nodeType === Node.ELEMENT_NODE
+      ? (node as Element)
+      : node.parentElement;
+  return !!el?.closest?.("[data-no-clickflow]");
 }
 
 /**
@@ -406,6 +428,12 @@ function onClick(ev: MouseEvent): void {
   // Let clicks inside our own popup keep their default behaviour.
   const host = getPopupHostElement();
   if (host && host.contains(ev.target as Node)) return;
+
+  // Opt-out zone: any ancestor marked [data-no-clickflow] is left
+  // alone so its own click handlers (e.g. the bookmark list's "jump
+  // to bookmark" rows) fire normally even when the click lands on a
+  // Chinese character inside that subtree.
+  if (isInNoClickflowZone(ev.target)) return;
 
   // We only handle primary-button clicks.
   if (ev.button !== 0) return;

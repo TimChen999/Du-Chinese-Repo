@@ -55,11 +55,16 @@ export async function listBookmarks(fileHash: string): Promise<ManualBookmark[]>
 /**
  * Append a new bookmark for `fileHash`. Returns the freshly minted
  * record so the caller can render it without an extra round-trip.
+ *
+ * `chapter` carries the user-readable location captured at save time
+ * (e.g. spine index + TOC label). It's optional so non-reader callers
+ * and tests don't have to fabricate it.
  */
 export async function addBookmark(
   fileHash: string,
   anchor: BookmarkAnchor,
   label?: string,
+  chapter?: { index?: number; label?: string },
 ): Promise<ManualBookmark> {
   const existing = await listBookmarks(fileHash);
   const bookmark: ManualBookmark = {
@@ -68,6 +73,8 @@ export async function addBookmark(
     anchor,
     label: (label ?? deriveLabel(anchor)).trim() || deriveLabel(anchor),
     createdAt: Date.now(),
+    ...(chapter?.index !== undefined ? { chapterIndex: chapter.index } : {}),
+    ...(chapter?.label ? { chapterLabel: chapter.label } : {}),
   };
   // Insert at the front so newest-first order is stable in storage too,
   // even though listBookmarks re-sorts on read.
