@@ -1,33 +1,47 @@
-**Pinyin Tool** is a Chinese reading assistant that works on any webpage. Select Chinese text and instantly see pinyin annotations, word-level definitions, and full-sentence English translations in a clean floating overlay — no copy-pasting into a dictionary app.
+ZiPinYin is a Chinese reading assistant that works on any webpage. Click any Chinese word to see its pinyin and definition, plus a natural English translation of the surrounding sentence — in a clean popup that stays out of your way.
 
-**How it works:**
-1. Highlight any Chinese text on a webpage with your mouse or keyboard.
-2. A floating overlay appears showing pinyin above each character, with clickable words that expand to show definitions.
-3. A natural English translation of the full passage appears below.
+How it works:
+1. Hover over Chinese text on a webpage and the word under your cursor highlights.
+2. Click a word and a popup opens with the chosen word's pinyin and definition on top, and the full-sentence translation and pinyin underneath. (Esc or "x" to exit)
+3. (Optional) Connect an LLM provider in settings — OpenAI, Gemini, Ollama, or any OpenAI-compatible endpoint — for natural sentence translations and context-aware definitions.
 
-You can also right-click selected text and choose "Show Pinyin and Translation" from the context menu, or use the keyboard shortcut Alt+Shift+P.
+Note: Popup can also be pulled via "Show Pinyin and Translation" from context menu or keyboard shortcut Alt+Shift+P.
 
-**Core features:**
+Core features:
 
-Pinyin overlay — Pinyin annotations appear above each word using the pinyin-pro library. Supports tone marks, tone numbers, or no tones. Click any word to see its contextual definition. Polyphonic characters are automatically disambiguated using surrounding context.
+Look up any word with one click
+Hover to see where the word starts and ends, click to open the popup with the word's pinyin, definition, and a translation of the surrounding sentence. Click another word in the same sentence and the popup retargets without losing what's there.
 
-AI-powered translations — Connect an LLM provider (OpenAI, Google Gemini, Ollama for fully local/offline use, or any OpenAI-compatible endpoint) to get natural English translations and context-aware definitions. Without an LLM, the extension still provides pinyin with no API key or internet required.
+Works offline, upgrades with AI
+The built-in dictionary runs instantly with no setup needed. Plug in OpenAI, Gemini, an OpenAI-compatible provider, or a local Ollama model and you get natural sentence translations plus context-aware definitions — polyphonic characters get the right reading, idioms come out as idioms instead of literal word-for-word.
 
-Text-to-speech — A speaker button on the overlay reads the selected text aloud with natural pronunciation using the Web Speech API. Toggle it on or off in settings.
+Pick your pinyin style
+Tone marks (hàn yǔ), tone numbers (han4 yu3), or none — your call.
 
-OCR text extraction — Click "Select text from image" in the popup, then drag a rectangle over any part of a page to extract Chinese characters from images, screenshots, embedded PDFs, or any non-selectable content. The recognized text feeds into the same pinyin and translation pipeline.
+Hear it spoken
+A speaker button on the popup reads the highlighted sentence aloud, with the highlight following along word by word so you can keep your place.
 
-Vocabulary tracking — Click "Add to Vocab" on any word definition to save it. Saved words include pinyin and contextual meaning. A floating vocab card in the popup shows recently saved words with the option to delete individual entries.
+OCR for images, manga, signs, locked PDFs
+Drag a rectangle over any non-selectable Chinese — image, screenshot, embedded PDF, manga panel — and the recognized text drops into the same lookup popup.
 
-Vocab Hub — A full-page study interface for browsing all saved vocabulary in a spacious layout with large characters, pinyin, and definitions. Includes a flashcard mode: pick a session size, flip cards to reveal answers, and mark right or wrong. Scores are tracked per word.
+Build a vocabulary as you read
+Hit "+ Vocab" on any word and the pinyin and the meaning that fit that sentence are saved together. Recent saves show in the popup's "Recents" tab; the full list lives in the Library.
 
-Built-in EPUB reader — Open .epub files directly inside the extension and get the same pinyin overlay and translations you get on web pages. Includes table of contents navigation, reading position persistence, and a recent books list for quick re-opening.
+Read Chinese books and documents in-browser
+Open EPUB, PDF, DOCX, TXT, Markdown, HTML, and subtitle files (SRT/VTT/ASS) directly inside the extension and use the same click-to-lookup over them. Multiple bookmarks per book, a table of contents, and reading-position memory are all included, with a recent-files list so you can pick up where you left off.
 
-**Settings:**
+See your vocabulary at a glance
+Sort saved words by frequency, recency, or alphabet. Words group into review buckets — confident / needs improvement / not yet reviewed — so what needs work is obvious. Export to JSON or import a backup any time.
+
+Flashcards with spaced review
+Sessions of 10, 20, 50, or all due cards. Flip a card to see pinyin, definition, and an example sentence; mark right or wrong. Wrong answers come back; familiar words drop out of rotation so you stop drilling what you already know.
+
+Settings:
 - Choose your LLM provider and model (or use fully offline mode with Ollama or no LLM at all)
 - Pick your pinyin style: tone marks, tone numbers, or no tones
 - Adjust overlay font size (12px to 24px)
-- Switch between light, dark, or auto theme
-- Toggle LLM mode and TTS on or off
+- Switch between auto, light, dark, or sepia theme
+- Toggle AI Translations and TTS on or off
+- Toggle "Auto-show overlay on text selection" off to silence hover/click and only invoke the popup via the right-click menu or Alt+Shift+P
 
-All vocabulary and settings are stored locally in your browser. No data is sent anywhere except to your chosen LLM provider when LLM mode is enabled.
+All vocabulary, bookmarks, and settings are stored locally in your browser. No data is sent anywhere except to your chosen LLM provider when AI Translations are enabled.
