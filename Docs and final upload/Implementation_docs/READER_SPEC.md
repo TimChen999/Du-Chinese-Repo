@@ -888,7 +888,6 @@ interface ReaderSettings {
   lineSpacing: number;     // 1.4-2.2, default 1.8
   theme: "light" | "dark" | "sepia" | "auto";
   readingMode: "scroll" | "paginated";
-  pinyinEnabled: boolean;
 }
 ```
 

@@ -561,7 +561,6 @@ function createMockElements() {
     fontFamilySetting: select(),
     lineSpacingSetting: input(), lineSpacingValue: div(),
     themeSetting: select(), readingModeSetting: select(),
-    pinyinSetting: input(),
     bookmarkToggle: btn(), bookmarkMenu: div(),
     bookmarkAdd: btn(), bookmarkShow: btn(),
     bookmarkSidebar: div(), bookmarkList: div(),

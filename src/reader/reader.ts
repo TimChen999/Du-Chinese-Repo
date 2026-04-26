@@ -252,7 +252,6 @@ function getElements() {
     lineSpacingValue: document.getElementById("line-spacing-value") as HTMLElement,
     themeSetting: document.getElementById("setting-theme") as HTMLSelectElement,
     readingModeSetting: document.getElementById("setting-reading-mode") as HTMLSelectElement,
-    pinyinSetting: document.getElementById("setting-pinyin") as HTMLInputElement,
     bookmarkToggle: document.getElementById("bookmark-toggle") as HTMLButtonElement,
     bookmarkMenu: document.getElementById("bookmark-menu") as HTMLElement,
     bookmarkAdd: document.getElementById("bookmark-add") as HTMLButtonElement,
@@ -627,8 +626,9 @@ async function readerSentenceProvider(args: {
 /**
  * Reads ExtensionSettings + ReaderSettings, pushes the click-flow's
  * relevant inputs (theme, font size, pinyinStyle, llmEnabled,
- * ttsEnabled, clickFlowEnabled). Reader-specific theme handling
- * resolves "sepia" to a concrete value.
+ * ttsEnabled, clickFlowEnabled). The reader honours the same
+ * `overlayEnabled` master switch that gates the in-page click-flow
+ * on regular web pages, so toggling it in the popup silences both.
  */
 async function pushClickFlowSettings(): Promise<void> {
   const ext = await getExtensionSettings();
@@ -638,7 +638,7 @@ async function pushClickFlowSettings(): Promise<void> {
     pinyinStyle: ext.pinyinStyle,
     llmEnabled: ext.llmEnabled,
     ttsEnabled: ext.ttsEnabled,
-    clickFlowEnabled: readerSettings.pinyinEnabled,
+    clickFlowEnabled: ext.overlayEnabled,
   });
 }
 
@@ -680,7 +680,6 @@ function attachClickFlowToEpub(renderer: FormatRenderer): void {
   if (!(renderer instanceof EpubRenderer)) return;
 
   renderer.onIframeRendered((iframeDoc) => {
-    if (!readerSettings.pinyinEnabled) return;
     ensureHighlightStylesInjected(iframeDoc);
     initClickFlow(iframeDoc);
   });
@@ -691,7 +690,6 @@ function attachClickFlowToEpub(renderer: FormatRenderer): void {
   const rendition = renderer.getRendition();
   if (!rendition) return;
   rendition.on("selected", (cfiRange: string, contents: any) => {
-    if (!readerSettings.pinyinEnabled) return;
     const selection = contents.window.getSelection();
     if (!selection || selection.isCollapsed) return;
     const text = selection.toString().trim();
@@ -887,7 +885,6 @@ function populateSettingsPanel(
   syncRangeFill(els.lineSpacingSetting);
   els.themeSetting.value = dropdownThemeValue();
   els.readingModeSetting.value = settings.readingMode;
-  els.pinyinSetting.checked = settings.pinyinEnabled;
 }
 
 /**
@@ -906,7 +903,6 @@ function syncPanelToState(els: ReturnType<typeof getElements>): void {
   const fontFamily = els.fontFamilySetting.value;
   const lineSpacing = parseFloat(els.lineSpacingSetting.value);
   const readingMode = els.readingModeSetting.value as ReaderSettings["readingMode"];
-  const pinyinEnabled = els.pinyinSetting.checked;
 
   const { readerTheme, sharedTheme } = partitionDropdownTheme(
     els.themeSetting.value,
@@ -918,7 +914,6 @@ function syncPanelToState(els: ReturnType<typeof getElements>): void {
     lineSpacing,
     theme: readerTheme,
     readingMode,
-    pinyinEnabled,
   };
   if (sharedTheme !== null) {
     currentSharedTheme = sharedTheme;
@@ -1180,6 +1175,7 @@ export async function initReader(): Promise<void> {
         pinyinStyle: ExtensionSettings["pinyinStyle"];
         llmEnabled: boolean;
         ttsEnabled: boolean;
+        clickFlowEnabled: boolean;
       }> = {};
       if (changes.theme && typeof changes.theme.newValue !== "undefined") {
         cfPatch.theme = changes.theme.newValue as ExtensionSettings["theme"];
@@ -1196,8 +1192,15 @@ export async function initReader(): Promise<void> {
       if (typeof changes.ttsEnabled?.newValue === "boolean") {
         cfPatch.ttsEnabled = changes.ttsEnabled.newValue;
       }
+      if (typeof changes.overlayEnabled?.newValue === "boolean") {
+        cfPatch.clickFlowEnabled = changes.overlayEnabled.newValue;
+      }
       if (Object.keys(cfPatch).length > 0) {
         setClickFlowSettings(cfPatch);
+        // Mirror content.ts: dismiss any open popup the moment the
+        // master switch flips off, so a stale popup doesn't sit there
+        // until the user manually closes it.
+        if (cfPatch.clickFlowEnabled === false) dismissClickFlow();
       }
 
       const change = changes.theme;

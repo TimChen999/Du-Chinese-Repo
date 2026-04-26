@@ -130,7 +130,6 @@ export interface ReaderSettings {
   lineSpacing: number;
   theme: ReaderTheme;
   readingMode: "scroll" | "paginated";
-  pinyinEnabled: boolean;
 }
 
 export const DEFAULT_READER_SETTINGS: ReaderSettings = {
@@ -139,7 +138,6 @@ export const DEFAULT_READER_SETTINGS: ReaderSettings = {
   lineSpacing: 1.8,
   theme: "auto",
   readingMode: "scroll",
-  pinyinEnabled: true,
 };
 
 export const MAX_RECENT_FILES = 20;

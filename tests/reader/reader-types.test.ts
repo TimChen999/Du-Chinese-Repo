@@ -42,10 +42,6 @@ describe("reader-types", () => {
       expect(DEFAULT_READER_SETTINGS.readingMode).toBe("scroll");
     });
 
-    it("has pinyinEnabled true by default", () => {
-      expect(DEFAULT_READER_SETTINGS.pinyinEnabled).toBe(true);
-    });
-
     it("satisfies the ReaderSettings interface", () => {
       const settings: ReaderSettings = DEFAULT_READER_SETTINGS;
       expect(settings).toBeDefined();
