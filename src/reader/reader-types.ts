@@ -95,12 +95,18 @@ export interface FormatRenderer {
   destroy(): void;
 
   /**
-   * Read the renderer's current text Selection and produce a serializable
-   * anchor for the word it points at, or null if no eligible selection
-   * exists. Called from the reader shell's processSelection() right after
-   * the user looks up a word.
+   * Produce a serializable anchor for the word the user just looked up.
+   *
+   * When `hint.wordRange` is provided (the click-flow path), renderers
+   * should prefer it: it points at the exact clicked word in whichever
+   * document the click came from (parent doc for DOM renderers, iframe
+   * doc for EPUB). Without a hint, renderers fall back to whatever
+   * implicit signal they have (window.getSelection, an epub.js CFI
+   * stashed earlier, etc.).
+   *
+   * Returns null when no eligible target exists.
    */
-  captureAnchor(): BookmarkAnchor | null;
+  captureAnchor(hint?: { wordRange: Range }): BookmarkAnchor | null;
 
   /**
    * Restore a previously captured anchor: scroll/jump such that the

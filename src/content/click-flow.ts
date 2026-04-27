@@ -150,6 +150,8 @@ type CommitHook = (info: {
   word: string;
   textNode: Text;
   offset: number;
+  /** Range covering the clicked word (in the document the click came from). */
+  wordRange: Range;
 }) => void;
 let onCommit: CommitHook | null = null;
 export function setOnSentenceCommit(cb: CommitHook | null): void {
@@ -501,6 +503,23 @@ async function commitClick(caret: CaretPosition): Promise<void> {
     }
     retargetWord(wordData, sentence.text);
     refreshPinyinStripActiveWord(word);
+
+    // Notify the host so the bookmark anchor follows the newly clicked
+    // word inside the same sentence (without this, the anchor would
+    // stay on whichever word first opened the sentence).
+    if (onCommit && currentSentenceAnchor) {
+      try {
+        onCommit({
+          sentence: sentence.text,
+          word,
+          textNode: currentSentenceAnchor.textNode,
+          offset: caret.offset,
+          wordRange: wordRange.cloneRange(),
+        });
+      } catch (err) {
+        console.error("[click-flow] commit hook threw:", err);
+      }
+    }
     return;
   }
 
@@ -591,6 +610,7 @@ async function commitClick(caret: CaretPosition): Promise<void> {
         word,
         textNode: currentSentenceAnchor.textNode,
         offset: caret.offset,
+        wordRange: wordRange.cloneRange(),
       });
     } catch (err) {
       console.error("[click-flow] commit hook threw:", err);

@@ -1337,13 +1337,18 @@ export async function initReader(): Promise<void> {
   // inject ::highlight() rules per iframe. Popup positioning translates
   // iframe-relative rects to parent coords inside click-flow.
   setSentenceTranslationProvider(readerSentenceProvider);
-  setOnSentenceCommit(() => {
-    // Capture word-precise anchor on every fresh-sentence click so
-    // reopening this book lands exactly where the user looked. Works
-    // for every renderer including EPUB (recordSelectedAnchor is
-    // driven by the iframe's "selected" event).
+  setOnSentenceCommit((info) => {
+    // Capture word-precise anchor on every click (fresh sentence OR
+    // same-sentence retarget) so the bookmark icon saves the user's
+    // current reading position rather than a stale earlier one. We
+    // hand the click-flow's wordRange to the renderer so DOM-based
+    // captureAnchor() doesn't have to fall back to window.getSelection
+    // (which is collapsed on a normal click). EPUB ignores the hint
+    // and keeps using its CFI-from-"selected"-event path.
     if (currentRenderer) {
-      const anchor = currentRenderer.captureAnchor();
+      const anchor = currentRenderer.captureAnchor({
+        wordRange: info.wordRange,
+      });
       if (anchor) lastCapturedAnchor = anchor;
     }
   });

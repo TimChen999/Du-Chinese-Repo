@@ -253,8 +253,78 @@ export class EpubRenderer implements FormatRenderer {
     };
   }
 
-  captureAnchor(): BookmarkAnchor | null {
+  captureAnchor(hint?: { wordRange: Range }): BookmarkAnchor | null {
+    // Click-flow path: derive a CFI from the clicked word's range so a
+    // single click is enough to move the bookmark anchor. Without this
+    // the user has to drag-select to update the anchor (only the
+    // "selected" event fed pendingAnchor before).
+    if (hint?.wordRange) {
+      const fromClick = this.anchorFromWordRange(hint.wordRange);
+      if (fromClick) return fromClick;
+    }
+    // Fallback: the drag-select path (epub.js "selected" event ->
+    // recordSelectedAnchor) is still the source of truth when no click
+    // hint is available, e.g. the right-click context-menu flow.
     return this.pendingAnchor;
+  }
+
+  /**
+   * Build a CFI-backed anchor from a word Range that lives inside one
+   * of the rendered spine iframes. We locate the `contents` whose
+   * iframe document contains the range, ask epub.js for the CFI of the
+   * range, and pull surrounding context out of that document's body
+   * text. Returns null if no spine iframe owns the range or if epub.js
+   * refuses the range (defensive — cfiFromRange can throw on detached
+   * nodes after a quick spine swap).
+   */
+  private anchorFromWordRange(range: Range): BookmarkAnchor | null {
+    if (!this.rendition) return null;
+    const ownerDoc = range.startContainer.ownerDocument;
+    if (!ownerDoc) return null;
+
+    const contentsList = this.rendition.getContents() as any;
+    const list = Array.isArray(contentsList) ? contentsList : [contentsList];
+    const owner = list.find(
+      (c: any) => c?.document === ownerDoc,
+    );
+    if (!owner) return null;
+
+    let cfi = "";
+    try {
+      cfi = owner.cfiFromRange(range);
+    } catch {
+      return null;
+    }
+    if (!cfi) return null;
+
+    const word = range.toString().trim();
+    if (!word) return null;
+
+    let contextBefore = "";
+    let contextAfter = "";
+    try {
+      const bodyText = ownerDoc.body?.textContent ?? "";
+      const idx = bodyText.indexOf(word);
+      if (idx >= 0) {
+        contextBefore = bodyText.slice(
+          Math.max(0, idx - ANCHOR_CONTEXT_CHARS),
+          idx,
+        );
+        contextAfter = bodyText.slice(
+          idx + word.length,
+          idx + word.length + ANCHOR_CONTEXT_CHARS,
+        );
+      }
+    } catch {
+      // Best-effort context; the CFI alone is enough to restore.
+    }
+
+    return {
+      word,
+      contextBefore,
+      contextAfter,
+      payload: { kind: "epub", cfi },
+    };
   }
 
   async goToAnchor(anchor: BookmarkAnchor): Promise<boolean> {

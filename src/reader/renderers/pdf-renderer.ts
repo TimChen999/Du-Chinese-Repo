@@ -182,19 +182,21 @@ export class PdfRenderer implements FormatRenderer {
    * DOM identity. Item indices match the order pdf.js returns from
    * getTextContent(), which is stable for the same PDF + version.
    */
-  captureAnchor(): BookmarkAnchor | null {
+  captureAnchor(hint?: { wordRange: Range }): BookmarkAnchor | null {
     if (typeof window === "undefined") return null;
-    const sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null;
-
-    const range = sel.getRangeAt(0);
+    const range = hint?.wordRange ?? (() => {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null;
+      return sel.getRangeAt(0);
+    })();
+    if (!range) return null;
     const layerEl = closestPdfTextLayer(range.startContainer);
     if (!layerEl) return null;
 
     const page = this.renderedPages.find((p) => p.textLayerEl === layerEl);
     if (!page) return null;
 
-    const word = sel.toString().trim();
+    const word = range.toString().trim();
     if (!word) return null;
 
     const anchorElement = closestPdfSpan(range.startContainer, layerEl);

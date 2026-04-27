@@ -158,8 +158,41 @@ export abstract class DomRendererBase implements FormatRenderer {
    * subtitle renderer does this to anchor on cue index instead of a
    * transcript-wide offset).
    */
-  captureAnchor(): BookmarkAnchor | null {
+  captureAnchor(hint?: { wordRange: Range }): BookmarkAnchor | null {
     if (!this.contentEl) return null;
+
+    // Click-flow path: anchor on the exact clicked word's range. A
+    // normal click leaves window.getSelection() collapsed, so without
+    // this branch the bookmark anchor never moves with the click.
+    if (hint?.wordRange) {
+      const range = hint.wordRange;
+      if (!this.contentEl.contains(range.startContainer)) return null;
+      const charOffset = absoluteCharOffset(
+        this.contentEl,
+        range.startContainer,
+        range.startOffset,
+      );
+      if (charOffset < 0) return null;
+      const word = range.toString().trim();
+      if (!word) return null;
+      const fullText = this.contentEl.textContent ?? "";
+      const contextBefore = fullText.slice(
+        Math.max(0, charOffset - ANCHOR_CONTEXT_CHARS),
+        charOffset,
+      );
+      const contextAfter = fullText.slice(
+        charOffset + word.length,
+        charOffset + word.length + ANCHOR_CONTEXT_CHARS,
+      );
+      return {
+        word,
+        contextBefore,
+        contextAfter,
+        payload: { kind: "dom", charOffset },
+      };
+    }
+
+    // Fallback: drag-select path (right-click menu, manual selection).
     const sel = typeof window !== "undefined" ? window.getSelection() : null;
     if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null;
 

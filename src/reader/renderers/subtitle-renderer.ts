@@ -93,13 +93,18 @@ export class SubtitleRenderer extends DomRendererBase {
    * (we already had one such change between SRT and ASS support), but
    * cue indices are stable per file and offsets within a cue are tiny.
    */
-  override captureAnchor(): BookmarkAnchor | null {
+  override captureAnchor(hint?: { wordRange: Range }): BookmarkAnchor | null {
     if (!this.contentEl) return null;
-    const sel = typeof window !== "undefined" ? window.getSelection() : null;
-    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null;
-
-    const range = sel.getRangeAt(0);
-    if (!this.contentEl.contains(range.startContainer)) return null;
+    let range: Range | null = null;
+    if (hint?.wordRange) {
+      range = hint.wordRange;
+    } else {
+      const sel =
+        typeof window !== "undefined" ? window.getSelection() : null;
+      if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null;
+      range = sel.getRangeAt(0);
+    }
+    if (!range || !this.contentEl.contains(range.startContainer)) return null;
 
     const cueEl = closestCueElement(range.startContainer);
     if (!cueEl) return null;
@@ -116,7 +121,7 @@ export class SubtitleRenderer extends DomRendererBase {
     );
     if (charOffset < 0) return null;
 
-    const word = sel.toString().trim();
+    const word = range.toString().trim();
     if (!word) return null;
 
     const cueText = textEl.textContent ?? "";
