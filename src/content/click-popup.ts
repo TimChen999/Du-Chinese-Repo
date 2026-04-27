@@ -65,6 +65,25 @@ let vocabCallback:
 let currentSentenceText = "";
 
 /**
+ * Anchor + sentence rects captured at popup creation, retained for the
+ * popup's lifetime so we can re-run positionPopup after every content
+ * mutation that can change the popup's height. The first positionPopup
+ * call (at showBootstrap time) measures a popup whose bottom tier is
+ * still in its loading placeholder; once setSentenceText / upgradeWord
+ * etc. fill in real content, the popup's height grows and its previous
+ * placement may no longer fit (popup clipped at viewport edge) or no
+ * longer clear the selected sentence (above-slot bottom intrudes into
+ * it). Repositioning with the post-mutation height fixes both.
+ *
+ * Caveat: these rects are in viewport coordinates frozen at click time.
+ * If the user scrolls between bootstrap and translation arrival, the
+ * stored rects no longer reflect where the sentence is on screen — but
+ * that's a pre-existing limitation of the click flow.
+ */
+let currentAnchorRect: DOMRect | null = null;
+let currentSentenceRect: DOMRect | null = null;
+
+/**
  * Live "should the speaker button be present?" snapshot. Captured at
  * popup creation and updated when settings change at runtime, so any
  * tier rebuild (setSentenceText / setSentenceError) can re-assert the
@@ -205,8 +224,22 @@ export function showBootstrap(args: ShowBootstrapArgs): void {
   root.appendChild(popup);
   popupEl = popup;
   currentSentenceText = args.sentence;
+  currentAnchorRect = args.anchorRect;
+  currentSentenceRect = args.sentenceRect;
 
   positionPopup(popup, args.anchorRect, args.sentenceRect);
+}
+
+/**
+ * Re-runs positionPopup with the rects captured at showBootstrap time.
+ * Called after any content mutation that can change the popup's height
+ * (translation arrival, word upgrade, pinyin strip swap, retarget) so
+ * the slot decisions and above-slot top are computed against the
+ * popup's actual current size, not the loading-state size.
+ */
+function repositionPopup(): void {
+  if (!popupEl || !currentAnchorRect || !currentSentenceRect) return;
+  positionPopup(popupEl, currentAnchorRect, currentSentenceRect);
 }
 
 /**
@@ -249,6 +282,7 @@ export function upgradeWord(word: {
     vocabBtn.dataset.pinyin = word.pinyin;
     vocabBtn.dataset.gloss = word.gloss;
   }
+  repositionPopup();
 }
 
 /**
@@ -272,6 +306,7 @@ export function setSentenceText(
   // of which view is currently active. The bootstrap path doesn't clear
   // it (LLM may still be in flight).
   if (source === "llm") clearLlmStatusBadge();
+  repositionPopup();
 }
 
 /**
@@ -291,6 +326,7 @@ export function upgradeStripWithLlm(
     .map((w) => ({ text: w.text, pinyin: w.pinyin }));
   while (view.firstChild) view.removeChild(view.firstChild);
   for (const w of stripWords) view.appendChild(makeStripRuby(w, activeChars));
+  repositionPopup();
 }
 
 /**
@@ -337,6 +373,7 @@ export function retargetWord(
     tier.appendChild(gloss);
   }
   tier.appendChild(makeActionsRow(word, sentence));
+  repositionPopup();
 }
 
 export function setSentenceError(message: string): void {
@@ -362,6 +399,7 @@ export function setSentenceError(message: string): void {
   view.classList.add("pt-error");
   while (view.firstChild) view.removeChild(view.firstChild);
   view.appendChild(document.createTextNode(message));
+  repositionPopup();
 }
 
 /**
@@ -394,6 +432,8 @@ export function dismiss(): void {
   removeExistingPopup();
   popupEl = null;
   currentSentenceText = "";
+  currentAnchorRect = null;
+  currentSentenceRect = null;
   if (onDismiss) onDismiss();
 }
 
@@ -525,11 +565,21 @@ function toggleAltReadings(btn: HTMLElement, hits: ReturnType<typeof lookupExact
 
 /**
  * Positions the popup so it never covers the highlighted sentence.
+ * Slot preference:
  *
- *  1. Below the sentence rect (preferred).
- *  2. Above the sentence rect.
+ *  1. Below or above the sentence rect — whichever side has more
+ *     available viewport space gets tried first.
+ *  2. The other vertical side.
  *  3. To the right (column margin), then to the left.
  *  4. Bottom-clamped fallback.
+ *
+ * Slots 1-4 are placed strictly outside `sentenceRect`, so as long as
+ * one of them is chosen the selected sentence stays visible. The
+ * fit-checks gate each slot on the popup's actual measured size, so
+ * callers must re-run positionPopup after any DOM mutation that grows
+ * the popup (translation arrival, etc.) — otherwise the slot picker
+ * decides on the loading-state size and the popup overflows or
+ * intrudes back into the sentence after content fills in.
  *
  * Horizontal anchor centres on the clicked word's x-midpoint when
  * placing above/below the sentence (so the user's eye doesn't have to
@@ -552,22 +602,22 @@ function positionPopup(
 
   const slots: Slot[] = [];
 
-  // 1. Below the sentence.
-  if (sentenceRect.bottom + gap + h <= vpH) {
-    const idealLeft = wordRect.left + wordRect.width / 2 - w / 2;
-    slots.push({
-      top: sentenceRect.bottom + gap,
-      left: clamp(idealLeft, gap, vpW - w - gap),
-    });
-  }
+  const idealLeft = wordRect.left + wordRect.width / 2 - w / 2;
+  const clampedLeft = clamp(idealLeft, gap, vpW - w - gap);
+  const spaceBelow = vpH - sentenceRect.bottom;
+  const spaceAbove = sentenceRect.top;
+  const belowFits = sentenceRect.bottom + gap + h <= vpH;
+  const aboveFits = sentenceRect.top - gap - h >= 0;
+  const belowSlot: Slot = { top: sentenceRect.bottom + gap, left: clampedLeft };
+  const aboveSlot: Slot = { top: sentenceRect.top - gap - h, left: clampedLeft };
 
-  // 2. Above the sentence.
-  if (sentenceRect.top - gap - h >= 0) {
-    const idealLeft = wordRect.left + wordRect.width / 2 - w / 2;
-    slots.push({
-      top: sentenceRect.top - gap - h,
-      left: clamp(idealLeft, gap, vpW - w - gap),
-    });
+  // 1 & 2. Vertical slots, ordered by which side has more room.
+  if (spaceAbove > spaceBelow) {
+    if (aboveFits) slots.push(aboveSlot);
+    if (belowFits) slots.push(belowSlot);
+  } else {
+    if (belowFits) slots.push(belowSlot);
+    if (aboveFits) slots.push(aboveSlot);
   }
 
   // 3. To the right.
