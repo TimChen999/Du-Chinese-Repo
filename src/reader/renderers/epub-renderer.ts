@@ -35,7 +35,6 @@ export class EpubRenderer implements FormatRenderer {
   private relocatedCallback: ((spineIndex: number) => void) | null = null;
   private iframeRenderedCallback: ((doc: Document) => void) | null = null;
   private lastKnownCfi = "";
-  private pendingAnchor: BookmarkAnchor | null = null;
 
   /**
    * Registers a callback fired with each rendered spine-page iframe's
@@ -169,7 +168,6 @@ export class EpubRenderer implements FormatRenderer {
     this.book?.destroy();
     this.rendition = null;
     this.book = null;
-    this.pendingAnchor = null;
   }
 
   getRendition(): Rendition | null {
@@ -202,91 +200,23 @@ export class EpubRenderer implements FormatRenderer {
   }
 
   /**
-   * Stash the most recent CFI range from epub.js's `selected` event so
-   * captureAnchor() can return a word-precise anchor on demand. The
-   * reader's selection wiring calls this from inside the same handler
-   * that already extracts the selection text + rect for the overlay.
-   *
-   * `selectedText` is what the user actually highlighted (passed
-   * separately because reading the iframe Selection again here can
-   * race with overlay activation).
-   */
-  recordSelectedAnchor(cfiRange: string, selectedText: string, contents?: any): void {
-    if (!cfiRange || !selectedText) {
-      return;
-    }
-    const word = selectedText.trim();
-    if (!word) return;
-
-    let contextBefore = "";
-    let contextAfter = "";
-    try {
-      const doc = contents?.document as Document | undefined;
-      const win = contents?.window as Window | undefined;
-      const sel = win?.getSelection?.();
-      if (sel && sel.rangeCount > 0 && doc?.body) {
-        const range = sel.getRangeAt(0);
-        const bodyText = doc.body.textContent ?? "";
-        const idx = bodyText.indexOf(word);
-        if (idx >= 0) {
-          contextBefore = bodyText.slice(
-            Math.max(0, idx - ANCHOR_CONTEXT_CHARS),
-            idx,
-          );
-          contextAfter = bodyText.slice(
-            idx + word.length,
-            idx + word.length + ANCHOR_CONTEXT_CHARS,
-          );
-        }
-        void range;
-      }
-    } catch {
-      // Context extraction is best-effort; the CFI itself is the
-      // authoritative anchor and works without surrounding snippets.
-    }
-
-    this.pendingAnchor = {
-      word,
-      contextBefore,
-      contextAfter,
-      payload: { kind: "epub", cfi: cfiRange },
-    };
-  }
-
-  captureAnchor(hint?: { wordRange: Range }): BookmarkAnchor | null {
-    // Click-flow path: derive a CFI from the clicked word's range so a
-    // single click is enough to move the bookmark anchor. Without this
-    // the user has to drag-select to update the anchor (only the
-    // "selected" event fed pendingAnchor before).
-    if (hint?.wordRange) {
-      const fromClick = this.anchorFromWordRange(hint.wordRange);
-      if (fromClick) return fromClick;
-    }
-    // Fallback: the drag-select path (epub.js "selected" event ->
-    // recordSelectedAnchor) is still the source of truth when no click
-    // hint is available, e.g. the right-click context-menu flow.
-    return this.pendingAnchor;
-  }
-
-  /**
-   * Build a CFI-backed anchor from a word Range that lives inside one
-   * of the rendered spine iframes. We locate the `contents` whose
-   * iframe document contains the range, ask epub.js for the CFI of the
-   * range, and pull surrounding context out of that document's body
+   * Build a CFI-backed anchor from the clicked word's Range. The range
+   * lives inside one of epub.js's rendered spine iframes; we locate the
+   * `contents` whose iframe document owns the range, ask epub.js for
+   * the CFI, and pull surrounding context out of that document's body
    * text. Returns null if no spine iframe owns the range or if epub.js
    * refuses the range (defensive — cfiFromRange can throw on detached
    * nodes after a quick spine swap).
    */
-  private anchorFromWordRange(range: Range): BookmarkAnchor | null {
+  captureAnchor(hint: { wordRange: Range }): BookmarkAnchor | null {
     if (!this.rendition) return null;
+    const range = hint.wordRange;
     const ownerDoc = range.startContainer.ownerDocument;
     if (!ownerDoc) return null;
 
     const contentsList = this.rendition.getContents() as any;
     const list = Array.isArray(contentsList) ? contentsList : [contentsList];
-    const owner = list.find(
-      (c: any) => c?.document === ownerDoc,
-    );
+    const owner = list.find((c: any) => c?.document === ownerDoc);
     if (!owner) return null;
 
     let cfi = "";

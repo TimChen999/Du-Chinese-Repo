@@ -2,13 +2,14 @@
  * Tests for the word-precise bookmark anchor on DomRendererBase.
  *
  * Uses TextRenderer as a concrete subclass since the base class is
- * abstract. Selection is driven through window.getSelection() which
- * jsdom supports for ranges over real text nodes.
+ * abstract. captureAnchor() now takes a wordRange hint produced by
+ * the click-flow, so each test builds a Range over the relevant text
+ * node and passes it explicitly.
  *
  * The capture/restore round-trip is the heart of the auto-bookmark
  * feature, so we cover: exact-offset round-trip, snippet-based
  * fallback when offsets drift, payload-kind mismatch rejection, and
- * empty-selection / out-of-content guards.
+ * out-of-content guards.
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
@@ -33,26 +34,21 @@ describe("DomRendererBase bookmark anchor", () => {
   });
 
   describe("captureAnchor()", () => {
-    it("returns null when there is no selection", () => {
-      window.getSelection()?.removeAllRanges();
-      expect(renderer.captureAnchor()).toBeNull();
-    });
-
-    it("returns null when selection is outside the content element", () => {
+    it("returns null when wordRange is outside the content element", () => {
       const stray = document.createElement("div");
       stray.textContent = "elsewhere";
       document.body.appendChild(stray);
-      selectTextInNode(stray.firstChild as Text, 0, 4);
-      expect(renderer.captureAnchor()).toBeNull();
+      const wordRange = rangeOver(stray.firstChild as Text, 0, 4);
+      expect(renderer.captureAnchor({ wordRange })).toBeNull();
       stray.remove();
     });
 
-    it("captures a dom anchor with the selected word", () => {
+    it("captures a dom anchor with the clicked word", () => {
       const node = firstTextNode(container);
       const offset = FIXTURE_TEXT.indexOf("你好");
-      selectTextInNode(node, offset, offset + 2);
+      const wordRange = rangeOver(node, offset, offset + 2);
 
-      const anchor = renderer.captureAnchor();
+      const anchor = renderer.captureAnchor({ wordRange });
       expect(anchor).not.toBeNull();
       expect(anchor!.word).toBe("你好");
       expect(anchor!.payload.kind).toBe("dom");
@@ -64,9 +60,9 @@ describe("DomRendererBase bookmark anchor", () => {
     it("captures surrounding context characters", () => {
       const node = firstTextNode(container);
       const offset = FIXTURE_TEXT.indexOf("世界");
-      selectTextInNode(node, offset, offset + 2);
+      const wordRange = rangeOver(node, offset, offset + 2);
 
-      const anchor = renderer.captureAnchor()!;
+      const anchor = renderer.captureAnchor({ wordRange })!;
       expect(anchor.contextBefore.endsWith(",")).toBe(true);
       expect(anchor.contextAfter.startsWith("。")).toBe(true);
     });
@@ -86,8 +82,8 @@ describe("DomRendererBase bookmark anchor", () => {
     it("round-trips an anchor on the same content", async () => {
       const node = firstTextNode(container);
       const offset = FIXTURE_TEXT.indexOf("世界");
-      selectTextInNode(node, offset, offset + 2);
-      const anchor = renderer.captureAnchor()!;
+      const wordRange = rangeOver(node, offset, offset + 2);
+      const anchor = renderer.captureAnchor({ wordRange })!;
 
       const fresh = new TextRenderer();
       const freshContainer = mountInScrollableHost();
@@ -211,12 +207,9 @@ function firstTextNode(root: HTMLElement): Text {
   return node as Text;
 }
 
-function selectTextInNode(node: Text, start: number, end: number): void {
+function rangeOver(node: Text, start: number, end: number): Range {
   const range = document.createRange();
   range.setStart(node, start);
   range.setEnd(node, end);
-  const sel = window.getSelection();
-  if (!sel) throw new Error("no Selection in jsdom");
-  sel.removeAllRanges();
-  sel.addRange(range);
+  return range;
 }

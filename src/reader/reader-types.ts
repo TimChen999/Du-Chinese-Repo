@@ -96,17 +96,12 @@ export interface FormatRenderer {
 
   /**
    * Produce a serializable anchor for the word the user just looked up.
-   *
-   * When `hint.wordRange` is provided (the click-flow path), renderers
-   * should prefer it: it points at the exact clicked word in whichever
-   * document the click came from (parent doc for DOM renderers, iframe
-   * doc for EPUB). Without a hint, renderers fall back to whatever
-   * implicit signal they have (window.getSelection, an epub.js CFI
-   * stashed earlier, etc.).
-   *
-   * Returns null when no eligible target exists.
+   * `wordRange` points at the exact clicked word in whichever document
+   * the click came from (parent doc for DOM/PDF/subtitle renderers,
+   * spine iframe doc for EPUB). Returns null when the range doesn't
+   * resolve against the renderer's current content.
    */
-  captureAnchor(hint?: { wordRange: Range }): BookmarkAnchor | null;
+  captureAnchor(hint: { wordRange: Range }): BookmarkAnchor | null;
 
   /**
    * Restore a previously captured anchor: scroll/jump such that the

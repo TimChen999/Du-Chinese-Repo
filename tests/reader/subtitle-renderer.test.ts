@@ -103,19 +103,16 @@ describe("SubtitleRenderer", () => {
       return container;
     }
 
-    it("returns a subtitle anchor when selecting inside a cue", async () => {
+    it("returns a subtitle anchor when wordRange points inside a cue", async () => {
       const container = await setupTwoCues();
       const cues = container.querySelectorAll(".subtitle-cue");
       const text = cues[1].querySelector(".subtitle-text")!.firstChild as Text;
 
-      const range = document.createRange();
-      range.setStart(text, 0);
-      range.setEnd(text, 2);
-      const sel = window.getSelection()!;
-      sel.removeAllRanges();
-      sel.addRange(range);
+      const wordRange = document.createRange();
+      wordRange.setStart(text, 0);
+      wordRange.setEnd(text, 2);
 
-      const anchor = renderer.captureAnchor();
+      const anchor = renderer.captureAnchor({ wordRange });
       expect(anchor).not.toBeNull();
       expect(anchor!.word).toBe("再见");
       expect(anchor!.payload.kind).toBe("subtitle");
@@ -125,10 +122,16 @@ describe("SubtitleRenderer", () => {
       }
     });
 
-    it("returns null when no selection exists", async () => {
+    it("returns null when wordRange is outside the renderer content", async () => {
       await setupTwoCues();
-      window.getSelection()?.removeAllRanges();
-      expect(renderer.captureAnchor()).toBeNull();
+      const stray = document.createElement("div");
+      stray.textContent = "stray";
+      document.body.appendChild(stray);
+      const wordRange = document.createRange();
+      wordRange.setStart(stray.firstChild as Text, 0);
+      wordRange.setEnd(stray.firstChild as Text, 5);
+      expect(renderer.captureAnchor({ wordRange })).toBeNull();
+      stray.remove();
     });
 
     it("goToAnchor returns true and locates the right cue", async () => {

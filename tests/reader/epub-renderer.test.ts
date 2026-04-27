@@ -582,33 +582,71 @@ describe("EpubRenderer", () => {
   });
 
   describe("captureAnchor() / goToAnchor()", () => {
-    it("returns null when no selected event has fired yet", async () => {
+    /**
+     * Build a Range against an iframe document the mock rendition
+     * exposes via getContents(). The mock document's body is just a
+     * plain string; we replace it with a real iframe document so the
+     * Range has a startContainer with an ownerDocument that matches
+     * one of getContents()[i].document.
+     */
+    function buildOwnedRange(
+      word: string,
+    ): { range: Range; ownerDoc: Document } {
+      const iframe = document.createElement("iframe");
+      document.body.appendChild(iframe);
+      const ownerDoc = iframe.contentDocument!;
+      ownerDoc.body.textContent = `前文 ${word} 后文`;
+      const textNode = ownerDoc.body.firstChild as Text;
+      const start = (textNode.data ?? "").indexOf(word);
+      const range = ownerDoc.createRange();
+      range.setStart(textNode, start);
+      range.setEnd(textNode, start + word.length);
+      return { range, ownerDoc };
+    }
+
+    it("returns null when no spine iframe owns the wordRange", async () => {
       await loadAndRender();
-      expect(renderer.captureAnchor()).toBeNull();
+      const stray = document.createElement("div");
+      stray.textContent = "stray";
+      document.body.appendChild(stray);
+      const range = document.createRange();
+      range.setStart(stray.firstChild as Text, 0);
+      range.setEnd(stray.firstChild as Text, 5);
+      expect(renderer.captureAnchor({ wordRange: range })).toBeNull();
+      stray.remove();
     });
 
-    it("recordSelectedAnchor stashes a CFI anchor that captureAnchor returns", async () => {
-      await loadAndRender();
-      renderer.recordSelectedAnchor(
-        "epubcfi(/6/4!/4/2/4,/1:5,/1:7)",
-        "你好",
-      );
+    it("derives a CFI anchor from the clicked word's range", async () => {
+      const { rendition } = await loadAndRender();
+      const { range, ownerDoc } = buildOwnedRange("你好");
+      const cfi = "epubcfi(/6/4!/4/2/4,/1:5,/1:7)";
+      const cfiFromRange = vi.fn().mockReturnValue(cfi);
+      rendition.getContents.mockReturnValue([
+        { document: ownerDoc, cfiFromRange },
+      ]);
 
-      const anchor = renderer.captureAnchor();
+      const anchor = renderer.captureAnchor({ wordRange: range });
+      expect(cfiFromRange).toHaveBeenCalledWith(range);
       expect(anchor).not.toBeNull();
       expect(anchor!.word).toBe("你好");
       expect(anchor!.payload.kind).toBe("epub");
       if (anchor!.payload.kind === "epub") {
-        expect(anchor!.payload.cfi).toBe("epubcfi(/6/4!/4/2/4,/1:5,/1:7)");
+        expect(anchor!.payload.cfi).toBe(cfi);
       }
+      expect(anchor!.contextBefore.endsWith("前文 ")).toBe(true);
+      expect(anchor!.contextAfter.startsWith(" 后文")).toBe(true);
     });
 
-    it("recordSelectedAnchor ignores empty inputs", async () => {
-      await loadAndRender();
-      renderer.recordSelectedAnchor("", "你好");
-      expect(renderer.captureAnchor()).toBeNull();
-      renderer.recordSelectedAnchor("epubcfi(/6/4)", "");
-      expect(renderer.captureAnchor()).toBeNull();
+    it("returns null when cfiFromRange throws (e.g. detached node)", async () => {
+      const { rendition } = await loadAndRender();
+      const { range, ownerDoc } = buildOwnedRange("你好");
+      const cfiFromRange = vi.fn().mockImplementation(() => {
+        throw new Error("detached");
+      });
+      rendition.getContents.mockReturnValue([
+        { document: ownerDoc, cfiFromRange },
+      ]);
+      expect(renderer.captureAnchor({ wordRange: range })).toBeNull();
     });
 
     it("goToAnchor calls rendition.display with the CFI", async () => {

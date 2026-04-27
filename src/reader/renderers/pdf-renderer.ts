@@ -182,14 +182,8 @@ export class PdfRenderer implements FormatRenderer {
    * DOM identity. Item indices match the order pdf.js returns from
    * getTextContent(), which is stable for the same PDF + version.
    */
-  captureAnchor(hint?: { wordRange: Range }): BookmarkAnchor | null {
-    if (typeof window === "undefined") return null;
-    const range = hint?.wordRange ?? (() => {
-      const sel = window.getSelection();
-      if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null;
-      return sel.getRangeAt(0);
-    })();
-    if (!range) return null;
+  captureAnchor(hint: { wordRange: Range }): BookmarkAnchor | null {
+    const range = hint.wordRange;
     const layerEl = closestPdfTextLayer(range.startContainer);
     if (!layerEl) return null;
 

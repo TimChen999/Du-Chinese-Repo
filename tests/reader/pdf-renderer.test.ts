@@ -384,7 +384,7 @@ describe("PdfRenderer", () => {
       });
     }
 
-    it("captures a pdf anchor with the selected word", async () => {
+    it("captures a pdf anchor with the clicked word", async () => {
       mockGetDocument.mockReturnValueOnce({
         promise: Promise.resolve(buildPdfDocWithItems()),
       });
@@ -397,14 +397,11 @@ describe("PdfRenderer", () => {
       const span = layer.querySelectorAll("span")[1];
       const textNode = span.firstChild as Text;
 
-      const range = document.createRange();
-      range.setStart(textNode, 0);
-      range.setEnd(textNode, 2);
-      const sel = window.getSelection()!;
-      sel.removeAllRanges();
-      sel.addRange(range);
+      const wordRange = document.createRange();
+      wordRange.setStart(textNode, 0);
+      wordRange.setEnd(textNode, 2);
 
-      const anchor = renderer.captureAnchor();
+      const anchor = renderer.captureAnchor({ wordRange });
       expect(anchor).not.toBeNull();
       expect(anchor!.word).toBe("世界");
       expect(anchor!.payload.kind).toBe("pdf");
@@ -414,15 +411,23 @@ describe("PdfRenderer", () => {
       }
     });
 
-    it("returns null when no selection exists", async () => {
+    it("returns null when wordRange is outside any text layer", async () => {
       mockGetDocument.mockReturnValueOnce({
         promise: Promise.resolve(buildPdfDocWithItems()),
       });
       await renderer.load(makeFile("a.pdf"));
       const container = mountInScrollableHost();
       await renderer.renderTo(container);
-      window.getSelection()?.removeAllRanges();
-      expect(renderer.captureAnchor()).toBeNull();
+
+      const stray = document.createElement("div");
+      stray.textContent = "stray";
+      document.body.appendChild(stray);
+      const wordRange = document.createRange();
+      wordRange.setStart(stray.firstChild as Text, 0);
+      wordRange.setEnd(stray.firstChild as Text, 5);
+
+      expect(renderer.captureAnchor({ wordRange })).toBeNull();
+      stray.remove();
     });
 
     it("goToAnchor returns true and navigates to the page", async () => {

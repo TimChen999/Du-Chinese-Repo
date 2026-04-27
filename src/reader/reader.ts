@@ -11,7 +11,6 @@
  *      READER_SPEC.md Section 10 "Reading State Persistence".
  */
 
-import { containsChinese } from "../shared/chinese-detect";
 import { handleVocabCapture } from "../shared/vocab-capture";
 import {
   initClickFlow,
@@ -671,10 +670,9 @@ function attachKeyHandler(
  * document; click-flow translates iframe-relative rects to parent
  * coords for positioning.
  *
- * Bookmark anchor capture: when click-flow's commit hook fires, we
- * also drive `recordSelectedAnchor` here using the iframe's selection
- * (epub.js gives us the CFI on its "selected" event, which still
- * fires alongside the click).
+ * Bookmark anchor capture: handled by the commit-hook path in
+ * initReader's setOnSentenceCommit — EpubRenderer.captureAnchor()
+ * builds a CFI from the click-flow's wordRange directly.
  */
 function attachClickFlowToEpub(renderer: FormatRenderer): void {
   if (!(renderer instanceof EpubRenderer)) return;
@@ -682,19 +680,6 @@ function attachClickFlowToEpub(renderer: FormatRenderer): void {
   renderer.onIframeRendered((iframeDoc) => {
     ensureHighlightStylesInjected(iframeDoc);
     initClickFlow(iframeDoc);
-  });
-
-  // epub.js still fires "selected" when the user drag-selects inside
-  // an iframe; we use that event purely to record the bookmark anchor
-  // (CFI). The click-flow handles the popup itself.
-  const rendition = renderer.getRendition();
-  if (!rendition) return;
-  rendition.on("selected", (cfiRange: string, contents: any) => {
-    const selection = contents.window.getSelection();
-    if (!selection || selection.isCollapsed) return;
-    const text = selection.toString().trim();
-    if (!text || !containsChinese(text)) return;
-    renderer.recordSelectedAnchor(cfiRange, text, contents);
   });
 }
 
@@ -1340,11 +1325,10 @@ export async function initReader(): Promise<void> {
   setOnSentenceCommit((info) => {
     // Capture word-precise anchor on every click (fresh sentence OR
     // same-sentence retarget) so the bookmark icon saves the user's
-    // current reading position rather than a stale earlier one. We
-    // hand the click-flow's wordRange to the renderer so DOM-based
-    // captureAnchor() doesn't have to fall back to window.getSelection
-    // (which is collapsed on a normal click). EPUB ignores the hint
-    // and keeps using its CFI-from-"selected"-event path.
+    // current reading position rather than a stale earlier one. The
+    // click-flow's wordRange is the single source of truth for every
+    // renderer — DOM/PDF/subtitle anchor on it directly; EPUB derives
+    // a CFI from it via cfiFromRange on the owning spine iframe.
     if (currentRenderer) {
       const anchor = currentRenderer.captureAnchor({
         wordRange: info.wordRange,
