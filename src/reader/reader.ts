@@ -1195,9 +1195,9 @@ async function goToLanding(els: ReturnType<typeof getElements>): Promise<void> {
   currentMetadata = null;
   currentFileHash = "";
 
-  els.bookTitle.textContent = "Pinyin Tool Reader";
+  els.bookTitle.textContent = "ZiPinYin-Reader";
   els.bookAuthor.textContent = "";
-  document.title = "Pinyin Tool \u2014 Library";
+  document.title = "ZiPinYin-Library";
 
   els.tocList.innerHTML = "";
   els.bookmarkList.innerHTML = "";

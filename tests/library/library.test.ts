@@ -48,7 +48,7 @@ const mockedRefreshFlashcardsView = refreshFlashcardsView as ReturnType<typeof v
 function buildLibraryDOM(): void {
   document.body.innerHTML = `
     <header class="library-header">
-      <h1 class="library-title">Pinyin Tool — Library</h1>
+      <h1 class="library-title">ZiPinYin-Library</h1>
       <nav class="library-tabs">
         <button class="library-tab active" data-library-tab="reader">Reader</button>
         <button class="library-tab" data-library-tab="vocab">Vocab</button>

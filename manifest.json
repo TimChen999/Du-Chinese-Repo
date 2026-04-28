@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "ZiPinYin — Pinyin Tool",
+  "name": "ZiPinYin",
   "version": "1.0.4",
   "description": "Select Chinese text on any webpage to see pinyin, definitions, and translations.",
   "permissions": [

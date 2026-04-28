@@ -40,7 +40,7 @@ const sampleVocab: VocabEntry[] = [
 
 function buildPopupDOM(): void {
   document.body.innerHTML = `
-    <h1>Pinyin Tool Extension</h1>
+    <h1>ZiPinYin-Menu</h1>
 
     <div class="tab-bar">
       <button class="tab-btn active" data-tab="settings">Settings</button>
