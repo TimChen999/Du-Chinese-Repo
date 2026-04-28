@@ -184,13 +184,22 @@
         <!-- Setup screen -->
         <div id="fc-setup" class="fc-setup">
           <h2>Practice your vocabulary</h2>
-          <p class="fc-prompt">How many cards?</p>
-          <div class="fc-size-buttons">
-            <button class="fc-size-btn" data-size="10">10</button>
-            <button class="fc-size-btn" data-size="20">20</button>
-            <button class="fc-size-btn" data-size="50">50</button>
-            <button class="fc-size-btn" data-size="all">All</button>
+
+          <div class="fc-setup-group">
+            <p class="fc-setup-label">What to study</p>
+            <div id="fc-bucket-summary" class="fc-bucket-summary"></div>
           </div>
+
+          <div class="fc-setup-group">
+            <p class="fc-setup-label">How many cards</p>
+            <div class="fc-size-buttons">
+              <button class="fc-size-btn" data-size="10">10</button>
+              <button class="fc-size-btn" data-size="20">20</button>
+              <button class="fc-size-btn" data-size="50">50</button>
+              <button class="fc-size-btn" data-size="all">All</button>
+            </div>
+          </div>
+
           <p id="fc-available" class="fc-available">0 words available</p>
           <button id="fc-start" class="fc-start-btn">Start</button>
         </div>

@@ -53,6 +53,7 @@ function getElements() {
     fcSession: document.getElementById("fc-session") as HTMLDivElement,
     fcSummary: document.getElementById("fc-summary") as HTMLDivElement,
     fcAvailable: document.getElementById("fc-available") as HTMLParagraphElement,
+    fcBucketSummary: document.getElementById("fc-bucket-summary") as HTMLDivElement | null,
     fcStart: document.getElementById("fc-start") as HTMLButtonElement,
     fcSizeBtns: document.querySelectorAll<HTMLButtonElement>(".fc-size-btn"),
     fcProgress: document.getElementById("fc-progress") as HTMLSpanElement,
@@ -605,6 +606,26 @@ let session: FlashcardSession | null = null;
 let selectedSize: number | "all" = 10;
 let lastSelectedSize: number | "all" = 10;
 
+/**
+ * Active bucket filter for the flashcard setup screen. "all" includes
+ * every entry; the three concrete bucket values restrict the deck to
+ * that bucket only. Lifted to module scope so chip clicks persist
+ * across re-renders without a storage round-trip — same shape as the
+ * vocab list's selectedBucketFilter, but tracked separately so the two
+ * tabs don't share state.
+ */
+let fcBucketFilter: VocabBucket | "all" = "all";
+
+/** "Practice N cards" / "Practice N from {bucket}" — live setup summary. */
+function formatSessionEstimate(count: number, bucket: VocabBucket | "all", isAll: boolean): string {
+  const noun = count === 1 ? "card" : "cards";
+  const prefix = isAll ? `Practice all ${count}` : `Practice ${count}`;
+  if (bucket === "all") {
+    return `${prefix} ${noun}`;
+  }
+  return `${prefix} from ${bucketLabel(bucket)}`;
+}
+
 function showCard(els: ReturnType<typeof getElements>): void {
   if (!session) return;
   const card = session.cards[session.currentIndex];
@@ -768,8 +789,11 @@ async function startSession(els: ReturnType<typeof getElements>): Promise<void> 
   const vocab = await getAllVocab();
   if (vocab.length === 0) return;
 
-  const size = selectedSize === "all" ? vocab.length : selectedSize;
-  const cards = buildSession(vocab, size);
+  const pool = filteredFcEntries(vocab);
+  if (pool.length === 0) return;
+
+  const size = selectedSize === "all" ? pool.length : selectedSize;
+  const cards = buildSession(pool, size);
 
   session = {
     cards,
@@ -785,21 +809,89 @@ async function startSession(els: ReturnType<typeof getElements>): Promise<void> 
   showCard(els);
 }
 
+/**
+ * Renders the "What to study" chip strip on the setup screen. Mirrors
+ * the vocab tab's bucket summary chip-by-chip so the two surfaces feel
+ * like the same control. Clicking a bucket chip filters the deck to
+ * that bucket; re-clicking the active chip clears the filter.
+ *
+ * Empty buckets (e.g. zero "Confident" cards on day one) get an inert
+ * disabled chip rather than a clickable one — selecting a bucket that
+ * can't seed a session would just leave Start disabled with no way out.
+ */
+function renderFcBucketSummary(
+  container: HTMLElement,
+  entries: VocabEntry[],
+  els: ReturnType<typeof getElements>,
+): void {
+  container.innerHTML = "";
+  if (entries.length === 0) return;
+
+  const counts: Record<VocabBucket, number> = {
+    confident: 0,
+    "needs-improvement": 0,
+    "not-reviewed": 0,
+  };
+  for (const e of entries) counts[getVocabBucket(e)]++;
+
+  const allChip = document.createElement("button");
+  allChip.type = "button";
+  allChip.className = "vocab-bucket-summary-chip vocab-bucket-all";
+  if (fcBucketFilter === "all") allChip.classList.add("active");
+  allChip.textContent = `All: ${entries.length}`;
+  allChip.addEventListener("click", () => {
+    if (fcBucketFilter === "all") return;
+    fcBucketFilter = "all";
+    void showSetup(els);
+  });
+  container.appendChild(allChip);
+
+  const order: VocabBucket[] = ["confident", "needs-improvement", "not-reviewed"];
+  for (const bucket of order) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = `vocab-bucket-summary-chip vocab-bucket-${bucket}`;
+    if (fcBucketFilter === bucket) chip.classList.add("active");
+    if (counts[bucket] === 0) chip.disabled = true;
+    chip.textContent = `${bucketLabel(bucket)}: ${counts[bucket]}`;
+    chip.addEventListener("click", () => {
+      fcBucketFilter = fcBucketFilter === bucket ? "all" : bucket;
+      void showSetup(els);
+    });
+    container.appendChild(chip);
+  }
+}
+
+/**
+ * Returns the entries that match the active flashcard bucket filter.
+ * Centralized so showSetup (for the live summary) and startSession
+ * (for the actual deck) stay in sync — drift between the two would
+ * mean the user sees a different count than they get.
+ */
+function filteredFcEntries(vocab: VocabEntry[]): VocabEntry[] {
+  if (fcBucketFilter === "all") return vocab;
+  return vocab.filter((e) => getVocabBucket(e) === fcBucketFilter);
+}
+
 async function showSetup(els: ReturnType<typeof getElements>): Promise<void> {
   const vocab = await getAllVocab();
-  const now = Date.now();
-  const dueCount = vocab.filter((e) => isDue(e, now)).length;
-  els.fcAvailable.textContent =
-    `${dueCount} due · ${vocab.length} total word${vocab.length !== 1 ? "s" : ""}`;
 
-  if (vocab.length === 0) {
-    els.fcStart.disabled = true;
-    els.fcAvailable.textContent = "No words saved yet. Select Chinese text on any page to start building your list.";
-  } else {
-    els.fcStart.disabled = false;
+  if (els.fcBucketSummary) {
+    renderFcBucketSummary(els.fcBucketSummary, vocab, els);
   }
 
-  if (vocab.length < 10) {
+  // If the active bucket no longer has any members (e.g. user cleared
+  // the list while the chip was selected), fall back to "all" so the
+  // setup screen can't end up in an unrecoverable disabled state.
+  const filtered = filteredFcEntries(vocab);
+  if (fcBucketFilter !== "all" && filtered.length === 0) {
+    fcBucketFilter = "all";
+  }
+  const pool = filteredFcEntries(vocab);
+
+  // Default size selection: stick with "all" while the pool is small
+  // enough that 10/20/50 don't make sense as choices.
+  if (pool.length < 10) {
     selectedSize = "all";
   }
 
@@ -808,6 +900,21 @@ async function showSetup(els: ReturnType<typeof getElements>): Promise<void> {
     const isSelected = val === String(selectedSize);
     btn.classList.toggle("selected", isSelected);
   });
+
+  if (vocab.length === 0) {
+    els.fcStart.disabled = true;
+    els.fcAvailable.textContent =
+      "No words saved yet. Select Chinese text on any page to start building your list.";
+  } else if (pool.length === 0) {
+    els.fcStart.disabled = true;
+    els.fcAvailable.textContent = `No words in ${bucketLabel(fcBucketFilter as VocabBucket)}.`;
+  } else {
+    els.fcStart.disabled = false;
+    const requested = selectedSize === "all" ? pool.length : selectedSize;
+    const effective = Math.min(requested, pool.length);
+    const isAll = selectedSize === "all" || requested >= pool.length;
+    els.fcAvailable.textContent = formatSessionEstimate(effective, fcBucketFilter, isAll);
+  }
 
   els.fcSession.classList.add("hidden");
   els.fcSummary.classList.add("hidden");
@@ -1019,13 +1126,17 @@ export async function initHub(): Promise<void> {
     }
   });
 
-  // Flashcard size selection
+  // Flashcard size selection. Toggle the selected class synchronously
+  // so the click feels instant, then re-render the whole setup screen
+  // so the live summary line and Start enabled-state catch up. Cheap
+  // because showSetup just re-reads vocab + repaints.
   els.fcSizeBtns.forEach((btn) => {
     btn.addEventListener("click", () => {
       const val = btn.dataset.size!;
       selectedSize = val === "all" ? "all" : parseInt(val, 10);
       els.fcSizeBtns.forEach((b) => b.classList.remove("selected"));
       btn.classList.add("selected");
+      void showSetup(els);
     });
   });
 

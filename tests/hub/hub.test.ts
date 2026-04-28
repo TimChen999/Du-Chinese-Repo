@@ -76,12 +76,18 @@ function buildHubDOM(): void {
       <div id="tab-flashcards" class="hub-tab-content hidden">
       <div id="fc-setup" class="fc-setup">
         <h2>Practice your vocabulary</h2>
-        <p class="fc-prompt">How many cards?</p>
-        <div class="fc-size-buttons">
-          <button class="fc-size-btn" data-size="10">10</button>
-          <button class="fc-size-btn" data-size="20">20</button>
-          <button class="fc-size-btn" data-size="50">50</button>
-          <button class="fc-size-btn" data-size="all">All</button>
+        <div class="fc-setup-group">
+          <p class="fc-setup-label">What to study</p>
+          <div id="fc-bucket-summary" class="fc-bucket-summary"></div>
+        </div>
+        <div class="fc-setup-group">
+          <p class="fc-setup-label">How many cards</p>
+          <div class="fc-size-buttons">
+            <button class="fc-size-btn" data-size="10">10</button>
+            <button class="fc-size-btn" data-size="20">20</button>
+            <button class="fc-size-btn" data-size="50">50</button>
+            <button class="fc-size-btn" data-size="all">All</button>
+          </div>
         </div>
         <p id="fc-available" class="fc-available">0 words available</p>
         <button id="fc-start" class="fc-start-btn">Start</button>
@@ -864,16 +870,48 @@ describe("hub page", () => {
   // ─── Flashcard setup ───────────────────────────────────────────
 
   describe("flashcard setup", () => {
-    it("shows due and total word count in setup screen", async () => {
+    it("shows the live session summary line on the setup screen", async () => {
       mockedGetAllVocab.mockResolvedValue([...sampleVocab]);
       await loadHub();
       await switchToFlashcards();
 
       const available = document.getElementById("fc-available")!;
-      // Sample vocab entries default to nextDueAt=0 so all 3 are
-      // immediately due; totals come from vocab.length.
-      expect(available.textContent).toContain("3 due");
-      expect(available.textContent).toContain("3 total words");
+      // Sample list has only 3 entries, so showSetup forces "all" and
+      // the summary line announces the full deck.
+      expect(available.textContent).toContain("Practice all 3 cards");
+    });
+
+    it("renders a clickable bucket chip strip with counts", async () => {
+      mockedGetAllVocab.mockResolvedValue([...sampleVocab]);
+      await loadHub();
+      await switchToFlashcards();
+
+      const summary = document.getElementById("fc-bucket-summary")!;
+      const chips = summary.querySelectorAll<HTMLButtonElement>(".vocab-bucket-summary-chip");
+      // All / Confident / Needs improvement / Not reviewed
+      expect(chips).toHaveLength(4);
+      expect(chips[0].textContent).toContain("All: 3");
+      // sampleVocab: 1 confident-eligible (totalReviews>0, no streak, but
+      // intervalDays=0 → needs-improvement), 1 not-reviewed, 1 streak →
+      // both reviewed entries land in "needs-improvement".
+      expect(chips[0].classList.contains("active")).toBe(true);
+    });
+
+    it("filters the deck when a bucket chip is clicked", async () => {
+      mockedGetAllVocab.mockResolvedValue([...sampleVocab]);
+      await loadHub();
+      await switchToFlashcards();
+
+      const summary = document.getElementById("fc-bucket-summary")!;
+      const notReviewedChip = Array.from(
+        summary.querySelectorAll<HTMLButtonElement>(".vocab-bucket-summary-chip"),
+      ).find((c) => c.textContent?.includes("Not reviewed"))!;
+      notReviewedChip.click();
+
+      await vi.waitFor(() => {
+        const available = document.getElementById("fc-available")!;
+        expect(available.textContent).toContain("from Not reviewed");
+      });
     });
 
     it("disables start when no words", async () => {
@@ -1235,8 +1273,9 @@ describe("hub page", () => {
       await mod.refreshFlashcardsView();
 
       const available = document.getElementById("fc-available")!;
-      expect(available.textContent).toContain("3 due");
-      expect(available.textContent).toContain("3 total words");
+      // refreshFlashcardsView re-renders the live summary line; the
+      // exact phrasing is asserted by the dedicated setup tests above.
+      expect(available.textContent).toContain("Practice all 3 cards");
     });
 
     it("shows the setup screen and hides summary when called from summary state", async () => {
