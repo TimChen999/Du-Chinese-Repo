@@ -1866,6 +1866,23 @@ function isValidEntry(obj: unknown): obj is { chars: string; pinyin: string; def
   return typeof o.chars === "string" && typeof o.pinyin === "string" && typeof o.definition === "string";
 }
 
+function parseImportedExamples(raw: unknown): VocabExample[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: VocabExample[] = [];
+  for (const item of raw) {
+    if (typeof item !== "object" || item === null) continue;
+    const ex = item as Record<string, unknown>;
+    if (typeof ex.sentence !== "string" || ex.sentence.length === 0) continue;
+    const capturedAt = typeof ex.capturedAt === "number" ? ex.capturedAt : Date.now();
+    const parsed: VocabExample = { sentence: ex.sentence, capturedAt };
+    if (typeof ex.translation === "string" && ex.translation.length > 0) {
+      parsed.translation = ex.translation;
+    }
+    out.push(parsed);
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 function readFileAsText(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -1907,9 +1924,9 @@ async function handleImport(
     return;
   }
 
-  const entries = valid.map((e) => {
+  const entries: VocabEntry[] = valid.map((e) => {
     const raw = e as Record<string, unknown>;
-    return {
+    const entry: VocabEntry = {
       chars: raw.chars as string,
       pinyin: raw.pinyin as string,
       definition: raw.definition as string,
@@ -1922,6 +1939,9 @@ async function handleImport(
       intervalDays: typeof raw.intervalDays === "number" ? raw.intervalDays : 0,
       nextDueAt: typeof raw.nextDueAt === "number" ? raw.nextDueAt : 0,
     };
+    const examples = parseImportedExamples(raw.examples);
+    if (examples) entry.examples = examples;
+    return entry;
   });
 
   const result = await importVocab(entries);

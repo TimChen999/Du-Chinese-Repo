@@ -2379,6 +2379,65 @@ describe("hub page", () => {
       });
     });
 
+    it("import preserves saved examples (sentence + translation)", async () => {
+      mockedGetAllVocab.mockResolvedValue([]);
+      mockedImportVocab.mockResolvedValue({ added: 1, updated: 0 });
+      await loadHub();
+
+      const payload = JSON.stringify({
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        entries: [
+          {
+            chars: "权威",
+            pinyin: "quán wēi",
+            definition: "authority",
+            count: 6,
+            firstSeen: 1777000000000,
+            lastSeen: 1777200000000,
+            wrongStreak: 0,
+            totalReviews: 1,
+            totalCorrect: 1,
+            intervalDays: 1,
+            nextDueAt: 1777300000000,
+            examples: [
+              {
+                sentence: "他是这个领域的权威。",
+                translation: "He is an authority in this field.",
+                capturedAt: 1777100000000,
+              },
+              { sentence: "无效", capturedAt: 1777100000001 },
+              { sentence: "", capturedAt: 1777100000002 },
+              { foo: "bar" },
+            ],
+          },
+        ],
+      });
+      const file = new File([payload], "vocab.json", { type: "application/json" });
+
+      const fileInput = document.getElementById("import-file-input") as HTMLInputElement;
+      Object.defineProperty(fileInput, "files", { value: [file], writable: true });
+      fileInput.dispatchEvent(new Event("change"));
+
+      await vi.waitFor(() => {
+        expect(mockedImportVocab).toHaveBeenCalled();
+      });
+
+      const passed = mockedImportVocab.mock.calls[0][0] as Array<{
+        chars: string;
+        examples?: Array<{ sentence: string; translation?: string; capturedAt: number }>;
+      }>;
+      expect(passed).toHaveLength(1);
+      expect(passed[0].examples).toEqual([
+        {
+          sentence: "他是这个领域的权威。",
+          translation: "He is an authority in this field.",
+          capturedAt: 1777100000000,
+        },
+        { sentence: "无效", capturedAt: 1777100000001 },
+      ]);
+    });
+
     it("import rejects invalid JSON gracefully", async () => {
       mockedGetAllVocab.mockResolvedValue([]);
       await loadHub();
