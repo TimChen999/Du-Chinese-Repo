@@ -84,11 +84,14 @@ function getElements() {
     clearVocabBtn: document.getElementById("clear-vocab") as HTMLButtonElement,
     clearAnchor: document.querySelector(".clear-anchor") as HTMLDivElement | null,
     clearPopover: document.getElementById("clear-popover") as HTMLDivElement | null,
+    clearSelectPanel: document.getElementById("clear-select-panel") as HTMLDivElement | null,
     clearTimeline: document.getElementById("clear-timeline") as HTMLSelectElement | null,
     clearOnlyNotReviewed: document.getElementById("clear-only-not-reviewed") as HTMLInputElement | null,
-    clearConfirmRow: document.getElementById("clear-confirm-row") as HTMLDivElement | null,
-    clearConfirmInput: document.getElementById("clear-confirm-input") as HTMLInputElement | null,
     clearExecute: document.getElementById("clear-execute") as HTMLButtonElement | null,
+    clearConfirmPanel: document.getElementById("clear-confirm-panel") as HTMLDivElement | null,
+    clearConfirmCount: document.getElementById("clear-confirm-count") as HTMLElement | null,
+    clearConfirmNo: document.getElementById("clear-confirm-no") as HTMLButtonElement | null,
+    clearConfirmYes: document.getElementById("clear-confirm-yes") as HTMLButtonElement | null,
     fcSetup: document.getElementById("fc-setup") as HTMLDivElement,
     fcSession: document.getElementById("fc-session") as HTMLDivElement,
     fcSummary: document.getElementById("fc-summary") as HTMLDivElement,
@@ -1324,20 +1327,27 @@ function setupKeyboard(els: ReturnType<typeof getElements>): void {
 }
 
 // ─── Clear popover ───────────────────────────────────────────────────
-// Two-step destructive flow on the vocab tab. The visible Clear button
-// only opens a popover; the actual deletion happens on the inner
-// "Clear N entries" execute button. Selection is along two axes:
+// Destructive flow on the vocab tab. The visible Clear button only
+// opens a popover; the actual deletion happens via a two-step "select
+// → confirm" path inside it.
+//
+// Step 1 ("select" panel): pick the targets along two axes.
 //   - timeline: "Older than {7,30,180,365} days" (uses lastSeen) or
 //     "All time" (the nuclear option)
 //   - onlyNotReviewed: when checked, restricts the deletion to entries
 //     whose SRS bucket is "not-reviewed" — useful for pruning imported
 //     cruft without touching the user's active study set.
-// "All time" requires typing DELETE before the execute button enables;
-// every other selection is one-click after opening the popover, with the
-// live count baked into the button label so the user always sees what
-// they're about to lose.
+// The "Clear N entries" button shows the live count and is disabled
+// when nothing matches.
+//
+// Step 2 ("confirm" panel): an "Are you sure?" view with a No button
+// (back to step 1) and a hold-to-delete Yes button. The Yes button
+// requires CLEAR_HOLD_DURATION_MS of continuous pointer/mouse hold
+// before firing; releasing early cancels and snaps the fill back. This
+// replaces the older type-DELETE flow with a uniform confirmation
+// regardless of how many entries are being removed.
 
-const CLEAR_CONFIRM_PHRASE = "DELETE";
+const CLEAR_HOLD_DURATION_MS = 2000;
 
 function parseClearTimelineDays(value: string | undefined): number | "all" {
   if (value === "all") return "all";
@@ -1368,26 +1378,36 @@ function isClearPopoverOpen(els: ReturnType<typeof getElements>): boolean {
   return !!els.clearPopover && !els.clearPopover.classList.contains("hidden");
 }
 
+/**
+ * Restores the popover to its initial "select" view. Used both when
+ * reopening the popover and when the user clicks No on the confirm
+ * step or anywhere else that cancels mid-flow.
+ */
+function showClearSelectPanel(els: ReturnType<typeof getElements>): void {
+  els.clearSelectPanel?.classList.remove("hidden");
+  els.clearConfirmPanel?.classList.add("hidden");
+  els.clearConfirmYes?.classList.remove("holding");
+}
+
 function closeClearPopover(els: ReturnType<typeof getElements>): void {
   if (!els.clearPopover) return;
   els.clearPopover.classList.add("hidden");
   els.clearVocabBtn?.setAttribute("aria-expanded", "false");
-  if (els.clearConfirmInput) els.clearConfirmInput.value = "";
-  if (els.clearConfirmRow) els.clearConfirmRow.classList.add("hidden");
+  showClearSelectPanel(els);
 }
 
 function openClearPopover(els: ReturnType<typeof getElements>): void {
   if (!els.clearPopover) return;
   els.clearPopover.classList.remove("hidden");
   els.clearVocabBtn?.setAttribute("aria-expanded", "true");
+  showClearSelectPanel(els);
   void refreshClearPopoverState(els);
 }
 
 /**
- * Recomputes the live count + execute-button enabled state from the
- * current popover inputs. Toggles the type-to-confirm row in/out based
- * on whether timeline === "all"; the row stays visible only for that
- * case so the user isn't asked to type DELETE for a 12-entry prune.
+ * Recomputes the live count on the "Clear N entries" execute button and
+ * its enabled state. Confirmation is now handled by the second-step
+ * panel, so the execute button only gates on whether anything matches.
  */
 async function refreshClearPopoverState(
   els: ReturnType<typeof getElements>,
@@ -1401,16 +1421,8 @@ async function refreshClearPopoverState(
   const count = targets.length;
 
   els.clearExecute.textContent = `Clear ${count} ${count === 1 ? "entry" : "entries"}`;
-
-  const isAllTime = timeline === "all";
-  if (els.clearConfirmRow) {
-    els.clearConfirmRow.classList.toggle("hidden", !isAllTime);
-  }
-
-  const confirmOk =
-    !isAllTime || (els.clearConfirmInput?.value.trim() === CLEAR_CONFIRM_PHRASE);
-  els.clearExecute.disabled = count === 0 || !confirmOk;
-  els.clearExecute.classList.toggle("clear-execute-btn-armed", count > 0 && confirmOk);
+  els.clearExecute.disabled = count === 0;
+  els.clearExecute.classList.toggle("clear-execute-btn-armed", count > 0);
 }
 
 function setupClearPopover(els: ReturnType<typeof getElements>): void {
@@ -1421,7 +1433,11 @@ function setupClearPopover(els: ReturnType<typeof getElements>): void {
     !els.clearPopover ||
     !els.clearTimeline ||
     !els.clearExecute ||
-    !els.clearAnchor
+    !els.clearAnchor ||
+    !els.clearSelectPanel ||
+    !els.clearConfirmPanel ||
+    !els.clearConfirmYes ||
+    !els.clearConfirmNo
   ) {
     els.clearVocabBtn?.addEventListener("click", async () => {
       if (confirm("Clear all recorded words?")) {
@@ -1447,9 +1463,6 @@ function setupClearPopover(els: ReturnType<typeof getElements>): void {
   els.clearOnlyNotReviewed?.addEventListener("change", () => {
     void refreshClearPopoverState(els);
   });
-  els.clearConfirmInput?.addEventListener("input", () => {
-    void refreshClearPopoverState(els);
-  });
 
   // Keep clicks inside the popover from bubbling to the outside-click
   // handler that closes it.
@@ -1457,39 +1470,115 @@ function setupClearPopover(els: ReturnType<typeof getElements>): void {
     e.stopPropagation();
   });
 
+  // Step 1 → 2: read the current target snapshot, swap to the confirm
+  // panel, and stash the snapshot on the Yes button so a 2-second hold
+  // can act on the same set the user just saw the count for. We freeze
+  // the targets here so a concurrent vocab-store mutation between the
+  // confirm dialog opening and the hold completing doesn't change the
+  // outcome under the user's fingers.
+  let pendingTargets: VocabEntry[] = [];
+  let pendingTimeline: number | "all" = 30;
+  let pendingOnlyNotReviewed = false;
+  let pendingTotal = 0;
+
   els.clearExecute.addEventListener("click", async () => {
-    if (!els.clearTimeline || !els.clearExecute) return;
+    if (!els.clearTimeline || !els.clearConfirmCount || !els.clearConfirmPanel || !els.clearSelectPanel) return;
     const timeline = parseClearTimelineDays(els.clearTimeline.value);
     const onlyNotReviewed = !!els.clearOnlyNotReviewed?.checked;
-
     const vocab = await getAllVocab();
     const targets = selectClearTargets(vocab, timeline, onlyNotReviewed);
     if (targets.length === 0) return;
 
-    // Fast path: nuking the entire store with no filter. Skips the
-    // per-entry walk and lets the storage layer drop the whole key.
-    if (timeline === "all" && !onlyNotReviewed && targets.length === vocab.length) {
-      await clearVocab();
-    } else {
-      await removeWords(targets.map((e) => e.chars));
+    pendingTargets = targets;
+    pendingTimeline = timeline;
+    pendingOnlyNotReviewed = onlyNotReviewed;
+    pendingTotal = vocab.length;
+
+    els.clearConfirmCount.textContent =
+      `${targets.length} ${targets.length === 1 ? "entry" : "entries"}`;
+    els.clearSelectPanel.classList.add("hidden");
+    els.clearConfirmPanel.classList.remove("hidden");
+  });
+
+  els.clearConfirmNo.addEventListener("click", () => {
+    cancelHold();
+    showClearSelectPanel(els);
+  });
+
+  // Hold-to-confirm: a single setTimeout for the full 2s. The CSS
+  // transition on the fill provides the visual; releasing or leaving
+  // the button before the timer fires cancels both. We listen on
+  // pointer events so mouse, touch, and pen all work consistently —
+  // jsdom dispatches them in tests too.
+  let holdTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function cancelHold(): void {
+    if (holdTimer !== null) {
+      clearTimeout(holdTimer);
+      holdTimer = null;
+    }
+    els.clearConfirmYes?.classList.remove("holding");
+  }
+
+  async function fireClear(): Promise<void> {
+    holdTimer = null;
+    els.clearConfirmYes?.classList.remove("holding");
+    if (pendingTargets.length === 0) {
+      closeClearPopover(els);
+      return;
     }
 
-    showStatus(els, `Cleared ${targets.length} ${targets.length === 1 ? "word" : "words"}.`, "success");
+    // Fast path: nuking the entire store with no filter. Skips the
+    // per-entry walk and lets the storage layer drop the whole key.
+    if (
+      pendingTimeline === "all" &&
+      !pendingOnlyNotReviewed &&
+      pendingTargets.length === pendingTotal
+    ) {
+      await clearVocab();
+    } else {
+      await removeWords(pendingTargets.map((e) => e.chars));
+    }
+
+    const removed = pendingTargets.length;
+    showStatus(els, `Cleared ${removed} ${removed === 1 ? "word" : "words"}.`, "success");
+    pendingTargets = [];
     closeClearPopover(els);
     await renderVocabList(els);
-  });
+  }
+
+  function startHold(e: Event): void {
+    e.preventDefault();
+    if (holdTimer !== null) return;
+    els.clearConfirmYes?.classList.add("holding");
+    holdTimer = setTimeout(() => {
+      void fireClear();
+    }, CLEAR_HOLD_DURATION_MS);
+  }
+
+  els.clearConfirmYes.addEventListener("pointerdown", startHold);
+  els.clearConfirmYes.addEventListener("pointerup", cancelHold);
+  els.clearConfirmYes.addEventListener("pointerleave", cancelHold);
+  els.clearConfirmYes.addEventListener("pointercancel", cancelHold);
+  // Mouse fallback for environments where PointerEvent isn't dispatched
+  // (older jsdom, reduced-feature browsers). Identical semantics.
+  els.clearConfirmYes.addEventListener("mousedown", startHold);
+  els.clearConfirmYes.addEventListener("mouseup", cancelHold);
+  els.clearConfirmYes.addEventListener("mouseleave", cancelHold);
 
   // Outside-click + Escape close the popover. Bound on document so any
   // click outside the anchor — including in the reader pane behind the
-  // hub — dismisses cleanly.
+  // hub — dismisses cleanly. Closing also cancels any in-flight hold.
   document.addEventListener("click", (e) => {
     if (!isClearPopoverOpen(els)) return;
     const target = e.target as Node | null;
     if (target && els.clearAnchor?.contains(target)) return;
+    cancelHold();
     closeClearPopover(els);
   });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && isClearPopoverOpen(els)) {
+      cancelHold();
       closeClearPopover(els);
     }
   });

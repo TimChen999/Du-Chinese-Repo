@@ -206,6 +206,17 @@ body {
   cursor: pointer;
 }
 
+.clear-select-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.clear-select-panel.hidden,
+.clear-confirm-panel.hidden {
+  display: none;
+}
+
 .clear-execute-btn {
   padding: 8px 14px;
   border: 1px solid #fca5a5;
@@ -228,8 +239,8 @@ body {
   border-color: #f87171;
 }
 
-/* Lit-up red when an "All time" wipe has been confirmed via the
-   type-to-confirm input, or any non-empty selection is ready. */
+/* Lit-up red whenever the selection has any matches, signaling the
+   button is ready to advance to the confirm step. */
 .clear-execute-btn-armed:not(:disabled) {
   background: #dc2626;
   border-color: #dc2626;
@@ -241,9 +252,96 @@ body {
   border-color: #b91c1c;
 }
 
-.clear-confirm-row strong {
+/* ─── Step 2: are-you-sure confirm panel ─────────────────────────
+   Replaces the select panel inside the popover when the user clicks
+   "Clear N entries". The Yes button is hold-to-delete: pressing it
+   adds .holding, which animates a red fill from 0 → 100% over the
+   hold duration. Releasing removes .holding and the fill snaps back
+   via the faster default transition. */
+
+.clear-confirm-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.clear-confirm-message {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #374151;
+  margin: 0;
+}
+
+.clear-confirm-message strong {
   color: #b91c1c;
-  letter-spacing: 0.05em;
+  font-weight: 700;
+}
+
+.clear-confirm-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.clear-confirm-no-btn {
+  flex: 0 0 auto;
+  padding: 8px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #374151;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.clear-confirm-no-btn:hover {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+.clear-confirm-yes-btn {
+  position: relative;
+  flex: 1 1 auto;
+  padding: 8px 14px;
+  border: 1px solid #dc2626;
+  border-radius: 6px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+.clear-confirm-yes-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 0;
+  background: #dc2626;
+  /* Fast snap-back on release. Overridden by .holding for the slow
+     fill that matches the JS hold timer. */
+  transition: width 0.15s linear;
+  z-index: 0;
+}
+
+.clear-confirm-yes-btn.holding .clear-confirm-yes-fill {
+  width: 100%;
+  transition: width 2s linear;
+}
+
+.clear-confirm-yes-btn.holding {
+  color: #ffffff;
+}
+
+.clear-confirm-yes-label {
+  position: relative;
+  z-index: 1;
+  pointer-events: none;
 }
 
 /* ─── Vocab Import/Export ─────────────────────────────────────── */
@@ -1330,7 +1428,24 @@ body[data-theme="dark"] .clear-execute-btn-armed:not(:disabled):hover {
   background: #ef4444;
   border-color: #ef4444;
 }
-body[data-theme="dark"] .clear-confirm-row strong { color: #fca5a5; }
+body[data-theme="dark"] .clear-confirm-message { color: #d1d5db; }
+body[data-theme="dark"] .clear-confirm-message strong { color: #fca5a5; }
+body[data-theme="dark"] .clear-confirm-no-btn {
+  background: #1f2937;
+  border-color: #4b5563;
+  color: #d1d5db;
+}
+body[data-theme="dark"] .clear-confirm-no-btn:hover {
+  background: #374151;
+  border-color: #6b7280;
+}
+body[data-theme="dark"] .clear-confirm-yes-btn {
+  background: #450a0a;
+  border-color: #dc2626;
+  color: #fca5a5;
+}
+body[data-theme="dark"] .clear-confirm-yes-fill { background: #dc2626; }
+body[data-theme="dark"] .clear-confirm-yes-btn.holding { color: #ffffff; }
 
 body[data-theme="dark"] .io-btn {
   background: #374151;
@@ -1735,7 +1850,13 @@ body[data-theme="dark"] .hub-tab-content::-webkit-scrollbar-thumb:hover {
   body[data-theme="auto"] .clear-execute-btn:hover:not(:disabled) { background: #7f1d1d; border-color: #f87171; }
   body[data-theme="auto"] .clear-execute-btn-armed:not(:disabled) { background: #dc2626; border-color: #dc2626; color: #ffffff; }
   body[data-theme="auto"] .clear-execute-btn-armed:not(:disabled):hover { background: #ef4444; border-color: #ef4444; }
-  body[data-theme="auto"] .clear-confirm-row strong { color: #fca5a5; }
+  body[data-theme="auto"] .clear-confirm-message { color: #d1d5db; }
+  body[data-theme="auto"] .clear-confirm-message strong { color: #fca5a5; }
+  body[data-theme="auto"] .clear-confirm-no-btn { background: #1f2937; border-color: #4b5563; color: #d1d5db; }
+  body[data-theme="auto"] .clear-confirm-no-btn:hover { background: #374151; border-color: #6b7280; }
+  body[data-theme="auto"] .clear-confirm-yes-btn { background: #450a0a; border-color: #dc2626; color: #fca5a5; }
+  body[data-theme="auto"] .clear-confirm-yes-fill { background: #dc2626; }
+  body[data-theme="auto"] .clear-confirm-yes-btn.holding { color: #ffffff; }
 
   body[data-theme="auto"] .io-btn { background: #374151; border-color: #4b5563; color: #d1d5db; }
   body[data-theme="auto"] .io-btn:hover { background: #1e3a5f; border-color: #60a5fa; color: #93c5fd; }
@@ -1931,7 +2052,24 @@ body[data-theme="sepia"] .clear-execute-btn-armed:not(:disabled):hover {
   background: #991b1b;
   border-color: #991b1b;
 }
-body[data-theme="sepia"] .clear-confirm-row strong { color: #92400e; }
+body[data-theme="sepia"] .clear-confirm-message { color: #5c4b37; }
+body[data-theme="sepia"] .clear-confirm-message strong { color: #92400e; }
+body[data-theme="sepia"] .clear-confirm-no-btn {
+  background: #f4ecd8;
+  border-color: #d4c8ab;
+  color: #5c4b37;
+}
+body[data-theme="sepia"] .clear-confirm-no-btn:hover {
+  background: #ede4cf;
+  border-color: #c2856a;
+}
+body[data-theme="sepia"] .clear-confirm-yes-btn {
+  background: #f5d6cb;
+  border-color: #b91c1c;
+  color: #92400e;
+}
+body[data-theme="sepia"] .clear-confirm-yes-fill { background: #b91c1c; }
+body[data-theme="sepia"] .clear-confirm-yes-btn.holding { color: #fffaf0; }
 
 body[data-theme="sepia"] .io-btn {
   background: #ede4cf;

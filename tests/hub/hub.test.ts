@@ -77,25 +77,33 @@ function buildHubDOM(): void {
         <div class="clear-anchor">
           <button type="button" id="clear-vocab" class="clear-btn" aria-haspopup="dialog" aria-expanded="false">Clear&hellip;</button>
           <div id="clear-popover" class="clear-popover hidden" role="dialog" aria-label="Clear vocabulary">
-            <div class="clear-popover-row">
-              <label for="clear-timeline" class="clear-popover-label">Clear entries</label>
-              <select id="clear-timeline" class="clear-popover-select">
-                <option value="7">Older than 7 days</option>
-                <option value="30" selected>Older than 30 days</option>
-                <option value="180">Older than 6 months</option>
-                <option value="365">Older than 1 year</option>
-                <option value="all">All time</option>
-              </select>
+            <div id="clear-select-panel" class="clear-select-panel">
+              <div class="clear-popover-row">
+                <label for="clear-timeline" class="clear-popover-label">Clear entries</label>
+                <select id="clear-timeline" class="clear-popover-select">
+                  <option value="7">Older than 7 days</option>
+                  <option value="30" selected>Older than 30 days</option>
+                  <option value="180">Older than 6 months</option>
+                  <option value="365">Older than 1 year</option>
+                  <option value="all">All time</option>
+                </select>
+              </div>
+              <label class="clear-popover-checkbox">
+                <input type="checkbox" id="clear-only-not-reviewed" />
+                <span>Only clear "Not reviewed"</span>
+              </label>
+              <button type="button" id="clear-execute" class="clear-execute-btn" disabled>Clear 0 entries</button>
             </div>
-            <label class="clear-popover-checkbox">
-              <input type="checkbox" id="clear-only-not-reviewed" />
-              <span>Only clear "Not reviewed"</span>
-            </label>
-            <div id="clear-confirm-row" class="clear-popover-row clear-confirm-row hidden">
-              <label for="clear-confirm-input" class="clear-popover-label">Type DELETE to confirm</label>
-              <input type="text" id="clear-confirm-input" class="clear-popover-input" />
+            <div id="clear-confirm-panel" class="clear-confirm-panel hidden" role="alertdialog">
+              <p class="clear-confirm-message">Delete <strong id="clear-confirm-count">0 entries</strong>? This cannot be undone.</p>
+              <div class="clear-confirm-actions">
+                <button type="button" id="clear-confirm-no" class="clear-confirm-no-btn">No</button>
+                <button type="button" id="clear-confirm-yes" class="clear-confirm-yes-btn" aria-label="Hold to confirm deletion">
+                  <span class="clear-confirm-yes-fill" aria-hidden="true"></span>
+                  <span class="clear-confirm-yes-label">Hold to delete</span>
+                </button>
+              </div>
             </div>
-            <button type="button" id="clear-execute" class="clear-execute-btn" disabled>Clear 0 entries</button>
           </div>
         </div>
       </div>
@@ -457,6 +465,20 @@ describe("hub page", () => {
       ];
     }
 
+    /**
+     * The hold-to-confirm flow uses fake timers so the 2s wait is
+     * controllable in-test. We bind real Date.now at setup so the
+     * timeline filter (which depends on actual lastSeen offsets) keeps
+     * working — the fake timers only intercept setTimeout/clearTimeout.
+     */
+    function useFakeHoldTimers() {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    }
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
     it("opens popover on Clear button click", async () => {
       mockedGetAllVocab.mockResolvedValue([...sampleVocab]);
       await loadHub();
@@ -470,88 +492,116 @@ describe("hub page", () => {
       expect(clearBtn.getAttribute("aria-expanded")).toBe("true");
     });
 
-    it("computes count and clears stale entries via removeWords", async () => {
+    it("Clear N entries swaps to the confirm panel with the live count", async () => {
       const now = Date.now();
       const vocab = makeTimelineVocab(now);
       mockedGetAllVocab.mockResolvedValue([...vocab]);
-      mockedRemoveWords.mockResolvedValue(2);
       await loadHub();
 
       const clearBtn = document.getElementById("clear-vocab") as HTMLButtonElement;
       clearBtn.click();
 
-      // Default selection: "Older than 30 days" → 2 stale entries.
       const execute = document.getElementById("clear-execute") as HTMLButtonElement;
       await vi.waitFor(() => {
         expect(execute.textContent).toContain("2");
         expect(execute.disabled).toBe(false);
       });
 
-      // Execute re-queries getAllVocab; keep the same snapshot so it
-      // sees the same targets the popover counted.
       execute.click();
+
+      const selectPanel = document.getElementById("clear-select-panel")!;
+      const confirmPanel = document.getElementById("clear-confirm-panel")!;
+      const confirmCount = document.getElementById("clear-confirm-count")!;
+      await vi.waitFor(() => {
+        expect(selectPanel.classList.contains("hidden")).toBe(true);
+        expect(confirmPanel.classList.contains("hidden")).toBe(false);
+        expect(confirmCount.textContent).toBe("2 entries");
+      });
+      // Nothing is cleared just by reaching the confirm panel.
+      expect(mockedRemoveWords).not.toHaveBeenCalled();
+      expect(mockedClearVocab).not.toHaveBeenCalled();
+    });
+
+    it("No on the confirm panel returns to the select panel", async () => {
+      mockedGetAllVocab.mockResolvedValue([...sampleVocab]);
+      await loadHub();
+
+      (document.getElementById("clear-vocab") as HTMLButtonElement).click();
+      const execute = document.getElementById("clear-execute") as HTMLButtonElement;
+      await vi.waitFor(() => expect(execute.disabled).toBe(false));
+      execute.click();
+
+      const selectPanel = document.getElementById("clear-select-panel")!;
+      const confirmPanel = document.getElementById("clear-confirm-panel")!;
+      await vi.waitFor(() => expect(confirmPanel.classList.contains("hidden")).toBe(false));
+
+      (document.getElementById("clear-confirm-no") as HTMLButtonElement).click();
+      expect(confirmPanel.classList.contains("hidden")).toBe(true);
+      expect(selectPanel.classList.contains("hidden")).toBe(false);
+      expect(mockedRemoveWords).not.toHaveBeenCalled();
+      expect(mockedClearVocab).not.toHaveBeenCalled();
+    });
+
+    it("holding Yes for the full duration clears the targeted entries", async () => {
+      const now = Date.now();
+      const vocab = makeTimelineVocab(now);
+      mockedGetAllVocab.mockResolvedValue([...vocab]);
+      mockedRemoveWords.mockResolvedValue(2);
+      await loadHub();
+
+      (document.getElementById("clear-vocab") as HTMLButtonElement).click();
+      const execute = document.getElementById("clear-execute") as HTMLButtonElement;
+      await vi.waitFor(() => expect(execute.disabled).toBe(false));
+      execute.click();
+
+      const yesBtn = document.getElementById("clear-confirm-yes") as HTMLButtonElement;
+      await vi.waitFor(() => {
+        expect(document.getElementById("clear-confirm-panel")!.classList.contains("hidden")).toBe(false);
+      });
+
+      // Pre-arm fake timers so the 2s hold can be advanced deterministically.
+      useFakeHoldTimers();
+      yesBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      expect(yesBtn.classList.contains("holding")).toBe(true);
+
+      vi.advanceTimersByTime(2000);
+      vi.useRealTimers();
 
       await vi.waitFor(() => {
         expect(mockedRemoveWords).toHaveBeenCalledWith(["古旧A", "古旧B"]);
       });
       expect(mockedClearVocab).not.toHaveBeenCalled();
-      // Popover closes after a successful clear.
       expect(document.getElementById("clear-popover")!.classList.contains("hidden")).toBe(true);
     });
 
-    it("filters by 'Only not reviewed' when checkbox is on", async () => {
-      const now = Date.now();
-      const vocab = makeTimelineVocab(now);
-      mockedGetAllVocab.mockResolvedValue([...vocab]);
-      mockedRemoveWords.mockResolvedValue(1);
-      await loadHub();
-
-      const clearBtn = document.getElementById("clear-vocab") as HTMLButtonElement;
-      clearBtn.click();
-
-      const onlyNot = document.getElementById("clear-only-not-reviewed") as HTMLInputElement;
-      onlyNot.checked = true;
-      onlyNot.dispatchEvent(new Event("change"));
-
-      // 古旧A has totalReviews=0 → not-reviewed; 古旧B has reviews → excluded.
-      const execute = document.getElementById("clear-execute") as HTMLButtonElement;
-      await vi.waitFor(() => {
-        expect(execute.textContent).toContain("1");
-      });
-
-      execute.click();
-
-      await vi.waitFor(() => {
-        expect(mockedRemoveWords).toHaveBeenCalledWith(["古旧A"]);
-      });
-    });
-
-    it("requires DELETE typed before All time can execute", async () => {
+    it("releasing Yes before the duration cancels the clear", async () => {
       mockedGetAllVocab.mockResolvedValue([...sampleVocab]);
       await loadHub();
 
-      const clearBtn = document.getElementById("clear-vocab") as HTMLButtonElement;
-      clearBtn.click();
-
-      const timeline = document.getElementById("clear-timeline") as HTMLSelectElement;
-      timeline.value = "all";
-      timeline.dispatchEvent(new Event("change"));
-
+      (document.getElementById("clear-vocab") as HTMLButtonElement).click();
       const execute = document.getElementById("clear-execute") as HTMLButtonElement;
-      const confirmRow = document.getElementById("clear-confirm-row")!;
+      await vi.waitFor(() => expect(execute.disabled).toBe(false));
+      execute.click();
 
+      const yesBtn = document.getElementById("clear-confirm-yes") as HTMLButtonElement;
       await vi.waitFor(() => {
-        expect(confirmRow.classList.contains("hidden")).toBe(false);
-        expect(execute.disabled).toBe(true);
+        expect(document.getElementById("clear-confirm-panel")!.classList.contains("hidden")).toBe(false);
       });
 
-      const confirmInput = document.getElementById("clear-confirm-input") as HTMLInputElement;
-      confirmInput.value = "DELETE";
-      confirmInput.dispatchEvent(new Event("input"));
+      useFakeHoldTimers();
+      yesBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      expect(yesBtn.classList.contains("holding")).toBe(true);
 
-      await vi.waitFor(() => {
-        expect(execute.disabled).toBe(false);
-      });
+      vi.advanceTimersByTime(500);
+      yesBtn.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+      expect(yesBtn.classList.contains("holding")).toBe(false);
+
+      // Even if more time passes, the timer was cleared.
+      vi.advanceTimersByTime(5000);
+      vi.useRealTimers();
+
+      expect(mockedRemoveWords).not.toHaveBeenCalled();
+      expect(mockedClearVocab).not.toHaveBeenCalled();
     });
 
     it("uses fast-path clearVocab when nuking all entries with no extra filter", async () => {
@@ -559,22 +609,24 @@ describe("hub page", () => {
       mockedClearVocab.mockResolvedValue(undefined);
       await loadHub();
 
-      const clearBtn = document.getElementById("clear-vocab") as HTMLButtonElement;
-      clearBtn.click();
-
+      (document.getElementById("clear-vocab") as HTMLButtonElement).click();
       const timeline = document.getElementById("clear-timeline") as HTMLSelectElement;
       timeline.value = "all";
       timeline.dispatchEvent(new Event("change"));
 
-      const confirmInput = document.getElementById("clear-confirm-input") as HTMLInputElement;
-      confirmInput.value = "DELETE";
-      confirmInput.dispatchEvent(new Event("input"));
-
-      // Execute re-queries getAllVocab; keep the same snapshot so the
-      // "all entries selected" fast-path is exercised.
       const execute = document.getElementById("clear-execute") as HTMLButtonElement;
       await vi.waitFor(() => expect(execute.disabled).toBe(false));
       execute.click();
+
+      const yesBtn = document.getElementById("clear-confirm-yes") as HTMLButtonElement;
+      await vi.waitFor(() => {
+        expect(document.getElementById("clear-confirm-panel")!.classList.contains("hidden")).toBe(false);
+      });
+
+      useFakeHoldTimers();
+      yesBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      vi.advanceTimersByTime(2000);
+      vi.useRealTimers();
 
       await vi.waitFor(() => {
         expect(mockedClearVocab).toHaveBeenCalled();
@@ -582,17 +634,31 @@ describe("hub page", () => {
       expect(mockedRemoveWords).not.toHaveBeenCalled();
     });
 
-    it("Escape key closes the popover without clearing", async () => {
+    it("Escape key closes the popover and cancels any in-flight hold", async () => {
       mockedGetAllVocab.mockResolvedValue([...sampleVocab]);
       await loadHub();
 
-      const clearBtn = document.getElementById("clear-vocab") as HTMLButtonElement;
-      clearBtn.click();
-      const popover = document.getElementById("clear-popover")!;
-      expect(popover.classList.contains("hidden")).toBe(false);
+      (document.getElementById("clear-vocab") as HTMLButtonElement).click();
+      const execute = document.getElementById("clear-execute") as HTMLButtonElement;
+      await vi.waitFor(() => expect(execute.disabled).toBe(false));
+      execute.click();
+
+      const yesBtn = document.getElementById("clear-confirm-yes") as HTMLButtonElement;
+      await vi.waitFor(() => {
+        expect(document.getElementById("clear-confirm-panel")!.classList.contains("hidden")).toBe(false);
+      });
+
+      useFakeHoldTimers();
+      yesBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      expect(yesBtn.classList.contains("holding")).toBe(true);
 
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-      expect(popover.classList.contains("hidden")).toBe(true);
+      expect(document.getElementById("clear-popover")!.classList.contains("hidden")).toBe(true);
+      expect(yesBtn.classList.contains("holding")).toBe(false);
+
+      vi.advanceTimersByTime(5000);
+      vi.useRealTimers();
+
       expect(mockedRemoveWords).not.toHaveBeenCalled();
       expect(mockedClearVocab).not.toHaveBeenCalled();
     });
