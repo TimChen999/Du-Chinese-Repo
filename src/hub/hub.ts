@@ -106,6 +106,7 @@ function getElements() {
     fcScore: document.getElementById("fc-score") as HTMLParagraphElement,
     fcWrongList: document.getElementById("fc-wrong-list") as HTMLDivElement,
     fcAgain: document.getElementById("fc-again") as HTMLButtonElement,
+    fcReviewWrong: document.getElementById("fc-review-wrong") as HTMLButtonElement | null,
     fcBack: document.getElementById("fc-back") as HTMLButtonElement,
     exportBtn: document.getElementById("export-vocab") as HTMLButtonElement,
     importBtn: document.getElementById("import-vocab") as HTMLButtonElement,
@@ -1101,6 +1102,15 @@ function showSummary(els: ReturnType<typeof getElements>): void {
   els.fcWrongList.innerHTML = "";
   const wrongCards = session.cards.filter((_, i) => session!.results[i] === "wrong");
 
+  if (els.fcReviewWrong) {
+    if (wrongCards.length === 0) {
+      els.fcReviewWrong.classList.add("hidden");
+    } else {
+      els.fcReviewWrong.textContent = `Review ${wrongCards.length} missed`;
+      els.fcReviewWrong.classList.remove("hidden");
+    }
+  }
+
   if (wrongCards.length === 0) {
     const congrats = document.createElement("p");
     congrats.className = "fc-congrats";
@@ -1497,6 +1507,24 @@ export async function initHub(): Promise<void> {
   els.fcAgain.addEventListener("click", () => {
     selectedSize = lastSelectedSize;
     showSetup(els);
+  });
+  els.fcReviewWrong?.addEventListener("click", () => {
+    if (!session) return;
+    const wrongCards = session.cards.filter(
+      (_, i) => session!.results[i] === "wrong",
+    );
+    if (wrongCards.length === 0) return;
+    session = {
+      cards: wrongCards,
+      currentIndex: 0,
+      results: [],
+      isFlipped: false,
+      history: [],
+    };
+    els.fcSetup.classList.add("hidden");
+    els.fcSummary.classList.add("hidden");
+    els.fcSession.classList.remove("hidden");
+    showCard(els);
   });
   els.fcBack.addEventListener("click", () => {
     session = null;
