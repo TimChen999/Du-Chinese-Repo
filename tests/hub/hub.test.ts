@@ -17,6 +17,7 @@ vi.mock("../../src/background/vocab-store", () => ({
   getAllVocab: vi.fn(),
   clearVocab: vi.fn(),
   removeWord: vi.fn(),
+  removeWords: vi.fn(),
   setExampleTranslation: vi.fn(),
   updateFlashcardResult: vi.fn(),
   restoreFlashcardState: vi.fn(),
@@ -27,6 +28,7 @@ import {
   getAllVocab,
   clearVocab,
   removeWord,
+  removeWords,
   setExampleTranslation,
   updateFlashcardResult,
   restoreFlashcardState,
@@ -36,6 +38,7 @@ import {
 const mockedGetAllVocab = getAllVocab as ReturnType<typeof vi.fn>;
 const mockedClearVocab = clearVocab as ReturnType<typeof vi.fn>;
 const mockedRemoveWord = removeWord as ReturnType<typeof vi.fn>;
+const mockedRemoveWords = removeWords as ReturnType<typeof vi.fn>;
 const mockedSetExampleTranslation = setExampleTranslation as ReturnType<typeof vi.fn>;
 const mockedUpdateResult = updateFlashcardResult as ReturnType<typeof vi.fn>;
 const mockedRestoreState = restoreFlashcardState as ReturnType<typeof vi.fn>;
@@ -71,7 +74,30 @@ function buildHubDOM(): void {
           <input type="file" id="import-file-input" accept=".json" hidden />
           <span id="io-status" class="io-status"></span>
         </div>
-        <button type="button" id="clear-vocab" class="clear-btn">Clear List</button>
+        <div class="clear-anchor">
+          <button type="button" id="clear-vocab" class="clear-btn" aria-haspopup="dialog" aria-expanded="false">Clear&hellip;</button>
+          <div id="clear-popover" class="clear-popover hidden" role="dialog" aria-label="Clear vocabulary">
+            <div class="clear-popover-row">
+              <label for="clear-timeline" class="clear-popover-label">Clear entries</label>
+              <select id="clear-timeline" class="clear-popover-select">
+                <option value="7">Older than 7 days</option>
+                <option value="30" selected>Older than 30 days</option>
+                <option value="180">Older than 6 months</option>
+                <option value="365">Older than 1 year</option>
+                <option value="all">All time</option>
+              </select>
+            </div>
+            <label class="clear-popover-checkbox">
+              <input type="checkbox" id="clear-only-not-reviewed" />
+              <span>Only clear "Not reviewed"</span>
+            </label>
+            <div id="clear-confirm-row" class="clear-popover-row clear-confirm-row hidden">
+              <label for="clear-confirm-input" class="clear-popover-label">Type DELETE to confirm</label>
+              <input type="text" id="clear-confirm-input" class="clear-popover-input" />
+            </div>
+            <button type="button" id="clear-execute" class="clear-execute-btn" disabled>Clear 0 entries</button>
+          </div>
+        </div>
       </div>
       <div id="vocab-list" class="vocab-list"></div>
     </div>
@@ -150,6 +176,7 @@ async function loadHub() {
     getAllVocab: mockedGetAllVocab,
     clearVocab: mockedClearVocab,
     removeWord: mockedRemoveWord,
+    removeWords: mockedRemoveWords,
     setExampleTranslation: mockedSetExampleTranslation,
     updateFlashcardResult: mockedUpdateResult,
     restoreFlashcardState: mockedRestoreState,
@@ -218,6 +245,7 @@ describe("hub page", () => {
     mockedGetAllVocab.mockReset();
     mockedClearVocab.mockReset();
     mockedRemoveWord.mockReset();
+    mockedRemoveWords.mockReset();
     mockedSetExampleTranslation.mockReset();
     mockedUpdateResult.mockReset();
     mockedRestoreState.mockReset();
@@ -412,38 +440,160 @@ describe("hub page", () => {
     });
   });
 
-  // ─── Clear button ──────────────────────────────────────────────
+  // ─── Clear popover ─────────────────────────────────────────────
 
-  describe("clear button", () => {
-    it("calls clearVocab and re-renders on confirm", async () => {
+  describe("clear popover", () => {
+    /**
+     * Builds a vocab snapshot whose lastSeen timestamps span "stale" and
+     * "fresh" relative to `now`, so the timeline filter has meaningful
+     * input. Two entries are >40 days old, one is fresh.
+     */
+    function makeTimelineVocab(now: number): VocabEntry[] {
+      const day = 86_400_000;
+      return [
+        { chars: "古旧A", pinyin: "a", definition: "stale a", count: 1, firstSeen: now - 100 * day, lastSeen: now - 90 * day, wrongStreak: 0, totalReviews: 0, totalCorrect: 0, intervalDays: 0, nextDueAt: 0 },
+        { chars: "古旧B", pinyin: "b", definition: "stale b", count: 1, firstSeen: now - 100 * day, lastSeen: now - 45 * day, wrongStreak: 0, totalReviews: 2, totalCorrect: 1, intervalDays: 0, nextDueAt: 0 },
+        { chars: "新鲜C", pinyin: "c", definition: "fresh c", count: 1, firstSeen: now - 5 * day, lastSeen: now - 1 * day, wrongStreak: 0, totalReviews: 0, totalCorrect: 0, intervalDays: 0, nextDueAt: 0 },
+      ];
+    }
+
+    it("opens popover on Clear button click", async () => {
       mockedGetAllVocab.mockResolvedValue([...sampleVocab]);
-      mockedClearVocab.mockResolvedValue(undefined);
-      vi.stubGlobal("confirm", vi.fn(() => true));
-
       await loadHub();
 
-      mockedGetAllVocab.mockResolvedValue([]);
+      const clearBtn = document.getElementById("clear-vocab") as HTMLButtonElement;
+      const popover = document.getElementById("clear-popover")!;
+      expect(popover.classList.contains("hidden")).toBe(true);
+
+      clearBtn.click();
+      expect(popover.classList.contains("hidden")).toBe(false);
+      expect(clearBtn.getAttribute("aria-expanded")).toBe("true");
+    });
+
+    it("computes count and clears stale entries via removeWords", async () => {
+      const now = Date.now();
+      const vocab = makeTimelineVocab(now);
+      mockedGetAllVocab.mockResolvedValue([...vocab]);
+      mockedRemoveWords.mockResolvedValue(2);
+      await loadHub();
+
       const clearBtn = document.getElementById("clear-vocab") as HTMLButtonElement;
       clearBtn.click();
+
+      // Default selection: "Older than 30 days" → 2 stale entries.
+      const execute = document.getElementById("clear-execute") as HTMLButtonElement;
+      await vi.waitFor(() => {
+        expect(execute.textContent).toContain("2");
+        expect(execute.disabled).toBe(false);
+      });
+
+      // Execute re-queries getAllVocab; keep the same snapshot so it
+      // sees the same targets the popover counted.
+      execute.click();
+
+      await vi.waitFor(() => {
+        expect(mockedRemoveWords).toHaveBeenCalledWith(["古旧A", "古旧B"]);
+      });
+      expect(mockedClearVocab).not.toHaveBeenCalled();
+      // Popover closes after a successful clear.
+      expect(document.getElementById("clear-popover")!.classList.contains("hidden")).toBe(true);
+    });
+
+    it("filters by 'Only not reviewed' when checkbox is on", async () => {
+      const now = Date.now();
+      const vocab = makeTimelineVocab(now);
+      mockedGetAllVocab.mockResolvedValue([...vocab]);
+      mockedRemoveWords.mockResolvedValue(1);
+      await loadHub();
+
+      const clearBtn = document.getElementById("clear-vocab") as HTMLButtonElement;
+      clearBtn.click();
+
+      const onlyNot = document.getElementById("clear-only-not-reviewed") as HTMLInputElement;
+      onlyNot.checked = true;
+      onlyNot.dispatchEvent(new Event("change"));
+
+      // 古旧A has totalReviews=0 → not-reviewed; 古旧B has reviews → excluded.
+      const execute = document.getElementById("clear-execute") as HTMLButtonElement;
+      await vi.waitFor(() => {
+        expect(execute.textContent).toContain("1");
+      });
+
+      execute.click();
+
+      await vi.waitFor(() => {
+        expect(mockedRemoveWords).toHaveBeenCalledWith(["古旧A"]);
+      });
+    });
+
+    it("requires DELETE typed before All time can execute", async () => {
+      mockedGetAllVocab.mockResolvedValue([...sampleVocab]);
+      await loadHub();
+
+      const clearBtn = document.getElementById("clear-vocab") as HTMLButtonElement;
+      clearBtn.click();
+
+      const timeline = document.getElementById("clear-timeline") as HTMLSelectElement;
+      timeline.value = "all";
+      timeline.dispatchEvent(new Event("change"));
+
+      const execute = document.getElementById("clear-execute") as HTMLButtonElement;
+      const confirmRow = document.getElementById("clear-confirm-row")!;
+
+      await vi.waitFor(() => {
+        expect(confirmRow.classList.contains("hidden")).toBe(false);
+        expect(execute.disabled).toBe(true);
+      });
+
+      const confirmInput = document.getElementById("clear-confirm-input") as HTMLInputElement;
+      confirmInput.value = "DELETE";
+      confirmInput.dispatchEvent(new Event("input"));
+
+      await vi.waitFor(() => {
+        expect(execute.disabled).toBe(false);
+      });
+    });
+
+    it("uses fast-path clearVocab when nuking all entries with no extra filter", async () => {
+      mockedGetAllVocab.mockResolvedValue([...sampleVocab]);
+      mockedClearVocab.mockResolvedValue(undefined);
+      await loadHub();
+
+      const clearBtn = document.getElementById("clear-vocab") as HTMLButtonElement;
+      clearBtn.click();
+
+      const timeline = document.getElementById("clear-timeline") as HTMLSelectElement;
+      timeline.value = "all";
+      timeline.dispatchEvent(new Event("change"));
+
+      const confirmInput = document.getElementById("clear-confirm-input") as HTMLInputElement;
+      confirmInput.value = "DELETE";
+      confirmInput.dispatchEvent(new Event("input"));
+
+      // Execute re-queries getAllVocab; keep the same snapshot so the
+      // "all entries selected" fast-path is exercised.
+      const execute = document.getElementById("clear-execute") as HTMLButtonElement;
+      await vi.waitFor(() => expect(execute.disabled).toBe(false));
+      execute.click();
 
       await vi.waitFor(() => {
         expect(mockedClearVocab).toHaveBeenCalled();
       });
-
-      await vi.waitFor(() => {
-        const empty = vocabList().querySelector(".vocab-empty");
-        expect(empty).not.toBeNull();
-      });
+      expect(mockedRemoveWords).not.toHaveBeenCalled();
     });
 
-    it("does not clear when user cancels", async () => {
+    it("Escape key closes the popover without clearing", async () => {
       mockedGetAllVocab.mockResolvedValue([...sampleVocab]);
-      vi.stubGlobal("confirm", vi.fn(() => false));
-
       await loadHub();
+
       const clearBtn = document.getElementById("clear-vocab") as HTMLButtonElement;
       clearBtn.click();
+      const popover = document.getElementById("clear-popover")!;
+      expect(popover.classList.contains("hidden")).toBe(false);
 
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+      expect(popover.classList.contains("hidden")).toBe(true);
+      expect(mockedRemoveWords).not.toHaveBeenCalled();
       expect(mockedClearVocab).not.toHaveBeenCalled();
     });
   });

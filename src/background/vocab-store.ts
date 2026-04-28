@@ -238,6 +238,30 @@ export async function removeWord(chars: string): Promise<void> {
 }
 
 /**
+ * Batch-removes a list of vocab entries in a single storage roundtrip.
+ * Returns the number of entries actually deleted (missing keys are
+ * silently skipped) so the UI can show an accurate "Cleared N words"
+ * status. Used by the Clear popover's pruning flow, which can target
+ * dozens to hundreds of entries at once.
+ */
+export async function removeWords(charsArr: string[]): Promise<number> {
+  if (charsArr.length === 0) return 0;
+  const result = await chrome.storage.local.get(STORAGE_KEY);
+  const store: VocabRecord = (result[STORAGE_KEY] as VocabRecord | undefined) ?? {};
+  let removed = 0;
+  for (const chars of charsArr) {
+    if (store[chars]) {
+      delete store[chars];
+      removed++;
+    }
+  }
+  if (removed > 0) {
+    await chrome.storage.local.set({ [STORAGE_KEY]: store });
+  }
+  return removed;
+}
+
+/**
  * Clears a single example slot on a vocab entry by its array index.
  * Frees the slot so a future high-quality capture can refill it. No-op
  * when the word or index is missing. Persists immediately so the UI

@@ -119,19 +119,131 @@ body {
 
 .clear-btn {
   padding: 6px 14px;
-  border: 1px solid #d1d5db;
+  border: 1px solid #fca5a5;
   border-radius: 6px;
-  background: #f9fafb;
+  background: #fef2f2;
   cursor: pointer;
   font-size: 13px;
   white-space: nowrap;
-  color: #374151;
+  color: #b91c1c;
+  font-weight: 500;
 }
 
 .clear-btn:hover {
   background: #fee2e2;
-  border-color: #fca5a5;
+  border-color: #f87171;
   color: #991b1b;
+}
+
+/* ─── Clear popover ───────────────────────────────────────────────
+   Anchored to the right edge of the controls row. The anchor is
+   position:relative so the popover absolutely-positions against it,
+   independent of any later layout changes. */
+
+.clear-anchor {
+  position: relative;
+}
+
+.clear-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 50;
+  min-width: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.clear-popover-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.clear-popover-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #6b7280;
+}
+
+.clear-popover-select,
+.clear-popover-input {
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+  background: #ffffff;
+  color: #1a1a1a;
+  outline: none;
+  font-family: inherit;
+  width: 100%;
+}
+
+.clear-popover-select:focus,
+.clear-popover-input:focus {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.15);
+}
+
+.clear-popover-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #374151;
+  cursor: pointer;
+}
+
+.clear-popover-checkbox input {
+  cursor: pointer;
+}
+
+.clear-execute-btn {
+  padding: 8px 14px;
+  border: 1px solid #fca5a5;
+  border-radius: 6px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s, transform 0.05s;
+}
+
+.clear-execute-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.clear-execute-btn:hover:not(:disabled) {
+  background: #fee2e2;
+  border-color: #f87171;
+}
+
+/* Lit-up red when an "All time" wipe has been confirmed via the
+   type-to-confirm input, or any non-empty selection is ready. */
+.clear-execute-btn-armed:not(:disabled) {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #ffffff;
+}
+
+.clear-execute-btn-armed:not(:disabled):hover {
+  background: #b91c1c;
+  border-color: #b91c1c;
+}
+
+.clear-confirm-row strong {
+  color: #b91c1c;
+  letter-spacing: 0.05em;
 }
 
 /* ─── Vocab Import/Export ─────────────────────────────────────── */
@@ -1171,16 +1283,54 @@ body[data-theme="dark"] .vocab-controls select:focus {
 }
 
 body[data-theme="dark"] .clear-btn {
-  background: #374151;
-  border-color: #4b5563;
-  color: #d1d5db;
+  background: #450a0a;
+  border-color: #7f1d1d;
+  color: #fca5a5;
 }
 
 body[data-theme="dark"] .clear-btn:hover {
   background: #7f1d1d;
-  border-color: #fca5a5;
+  border-color: #f87171;
+  color: #fecaca;
+}
+
+body[data-theme="dark"] .clear-popover {
+  background: #1f2937;
+  border-color: #374151;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+body[data-theme="dark"] .clear-popover-label { color: #9ca3af; }
+body[data-theme="dark"] .clear-popover-checkbox { color: #d1d5db; }
+body[data-theme="dark"] .clear-popover-select,
+body[data-theme="dark"] .clear-popover-input {
+  background: #374151;
+  color: #f3f4f6;
+  border-color: #4b5563;
+}
+body[data-theme="dark"] .clear-popover-select:focus,
+body[data-theme="dark"] .clear-popover-input:focus {
+  border-color: #f87171;
+  box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.25);
+}
+body[data-theme="dark"] .clear-execute-btn {
+  background: #450a0a;
+  border-color: #7f1d1d;
   color: #fca5a5;
 }
+body[data-theme="dark"] .clear-execute-btn:hover:not(:disabled) {
+  background: #7f1d1d;
+  border-color: #f87171;
+}
+body[data-theme="dark"] .clear-execute-btn-armed:not(:disabled) {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #ffffff;
+}
+body[data-theme="dark"] .clear-execute-btn-armed:not(:disabled):hover {
+  background: #ef4444;
+  border-color: #ef4444;
+}
+body[data-theme="dark"] .clear-confirm-row strong { color: #fca5a5; }
 
 body[data-theme="dark"] .io-btn {
   background: #374151;
@@ -1560,8 +1710,32 @@ body[data-theme="dark"] .hub-tab-content::-webkit-scrollbar-thumb:hover {
 
   body[data-theme="auto"] .vocab-controls select { background: #374151; color: #f3f4f6; border-color: #4b5563; }
   body[data-theme="auto"] .vocab-controls select:focus { border-color: #60a5fa; box-shadow: 0 0 0 2px rgba(96,165,250,0.2); }
-  body[data-theme="auto"] .clear-btn { background: #374151; border-color: #4b5563; color: #d1d5db; }
-  body[data-theme="auto"] .clear-btn:hover { background: #7f1d1d; border-color: #fca5a5; color: #fca5a5; }
+  body[data-theme="auto"] .clear-btn { background: #450a0a; border-color: #7f1d1d; color: #fca5a5; }
+  body[data-theme="auto"] .clear-btn:hover { background: #7f1d1d; border-color: #f87171; color: #fecaca; }
+
+  body[data-theme="auto"] .clear-popover {
+    background: #1f2937;
+    border-color: #374151;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  }
+  body[data-theme="auto"] .clear-popover-label { color: #9ca3af; }
+  body[data-theme="auto"] .clear-popover-checkbox { color: #d1d5db; }
+  body[data-theme="auto"] .clear-popover-select,
+  body[data-theme="auto"] .clear-popover-input {
+    background: #374151;
+    color: #f3f4f6;
+    border-color: #4b5563;
+  }
+  body[data-theme="auto"] .clear-popover-select:focus,
+  body[data-theme="auto"] .clear-popover-input:focus {
+    border-color: #f87171;
+    box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.25);
+  }
+  body[data-theme="auto"] .clear-execute-btn { background: #450a0a; border-color: #7f1d1d; color: #fca5a5; }
+  body[data-theme="auto"] .clear-execute-btn:hover:not(:disabled) { background: #7f1d1d; border-color: #f87171; }
+  body[data-theme="auto"] .clear-execute-btn-armed:not(:disabled) { background: #dc2626; border-color: #dc2626; color: #ffffff; }
+  body[data-theme="auto"] .clear-execute-btn-armed:not(:disabled):hover { background: #ef4444; border-color: #ef4444; }
+  body[data-theme="auto"] .clear-confirm-row strong { color: #fca5a5; }
 
   body[data-theme="auto"] .io-btn { background: #374151; border-color: #4b5563; color: #d1d5db; }
   body[data-theme="auto"] .io-btn:hover { background: #1e3a5f; border-color: #60a5fa; color: #93c5fd; }
@@ -1709,16 +1883,55 @@ body[data-theme="sepia"] .vocab-controls select:focus {
 }
 
 body[data-theme="sepia"] .clear-btn {
-  background: #ede4cf;
-  border-color: #d4c8ab;
-  color: #5c4b37;
+  background: #f5d6cb;
+  border-color: #c2856a;
+  color: #92400e;
+  font-weight: 500;
 }
 
 body[data-theme="sepia"] .clear-btn:hover {
+  background: #f0c4b4;
+  border-color: #a0664f;
+  color: #7c1d1d;
+}
+
+body[data-theme="sepia"] .clear-popover {
+  background: #f4ecd8;
+  border-color: #d4c8ab;
+  box-shadow: 0 8px 24px rgba(92, 75, 55, 0.25);
+}
+body[data-theme="sepia"] .clear-popover-label { color: #8b7355; }
+body[data-theme="sepia"] .clear-popover-checkbox { color: #5c4b37; }
+body[data-theme="sepia"] .clear-popover-select,
+body[data-theme="sepia"] .clear-popover-input {
+  background: #ede4cf;
+  color: #5c4b37;
+  border-color: #d4c8ab;
+}
+body[data-theme="sepia"] .clear-popover-select:focus,
+body[data-theme="sepia"] .clear-popover-input:focus {
+  border-color: #c2856a;
+  box-shadow: 0 0 0 2px rgba(194, 133, 106, 0.25);
+}
+body[data-theme="sepia"] .clear-execute-btn {
   background: #f5d6cb;
   border-color: #c2856a;
   color: #92400e;
 }
+body[data-theme="sepia"] .clear-execute-btn:hover:not(:disabled) {
+  background: #f0c4b4;
+  border-color: #a0664f;
+}
+body[data-theme="sepia"] .clear-execute-btn-armed:not(:disabled) {
+  background: #b91c1c;
+  border-color: #b91c1c;
+  color: #fffaf0;
+}
+body[data-theme="sepia"] .clear-execute-btn-armed:not(:disabled):hover {
+  background: #991b1b;
+  border-color: #991b1b;
+}
+body[data-theme="sepia"] .clear-confirm-row strong { color: #92400e; }
 
 body[data-theme="sepia"] .io-btn {
   background: #ede4cf;

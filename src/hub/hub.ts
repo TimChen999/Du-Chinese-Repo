@@ -10,6 +10,7 @@ import {
   getAllVocab,
   clearVocab,
   removeWord,
+  removeWords,
   setExampleTranslation,
   updateFlashcardResult,
   restoreFlashcardState,
@@ -81,6 +82,13 @@ function getElements() {
     vocabBucketSummary: document.getElementById("vocab-bucket-summary") as HTMLDivElement | null,
     vocabList: document.getElementById("vocab-list") as HTMLDivElement,
     clearVocabBtn: document.getElementById("clear-vocab") as HTMLButtonElement,
+    clearAnchor: document.querySelector(".clear-anchor") as HTMLDivElement | null,
+    clearPopover: document.getElementById("clear-popover") as HTMLDivElement | null,
+    clearTimeline: document.getElementById("clear-timeline") as HTMLSelectElement | null,
+    clearOnlyNotReviewed: document.getElementById("clear-only-not-reviewed") as HTMLInputElement | null,
+    clearConfirmRow: document.getElementById("clear-confirm-row") as HTMLDivElement | null,
+    clearConfirmInput: document.getElementById("clear-confirm-input") as HTMLInputElement | null,
+    clearExecute: document.getElementById("clear-execute") as HTMLButtonElement | null,
     fcSetup: document.getElementById("fc-setup") as HTMLDivElement,
     fcSession: document.getElementById("fc-session") as HTMLDivElement,
     fcSummary: document.getElementById("fc-summary") as HTMLDivElement,
@@ -1315,6 +1323,178 @@ function setupKeyboard(els: ReturnType<typeof getElements>): void {
   });
 }
 
+// ─── Clear popover ───────────────────────────────────────────────────
+// Two-step destructive flow on the vocab tab. The visible Clear button
+// only opens a popover; the actual deletion happens on the inner
+// "Clear N entries" execute button. Selection is along two axes:
+//   - timeline: "Older than {7,30,180,365} days" (uses lastSeen) or
+//     "All time" (the nuclear option)
+//   - onlyNotReviewed: when checked, restricts the deletion to entries
+//     whose SRS bucket is "not-reviewed" — useful for pruning imported
+//     cruft without touching the user's active study set.
+// "All time" requires typing DELETE before the execute button enables;
+// every other selection is one-click after opening the popover, with the
+// live count baked into the button label so the user always sees what
+// they're about to lose.
+
+const CLEAR_CONFIRM_PHRASE = "DELETE";
+
+function parseClearTimelineDays(value: string | undefined): number | "all" {
+  if (value === "all") return "all";
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : 30;
+}
+
+/**
+ * Returns the entries that match the current popover selection. Pure
+ * read of `vocab` — used both for the live count on the execute button
+ * and for collecting the chars-keys to pass to removeWords on confirm.
+ */
+function selectClearTargets(
+  vocab: VocabEntry[],
+  timelineDays: number | "all",
+  onlyNotReviewed: boolean,
+  now: number = Date.now(),
+): VocabEntry[] {
+  return vocab.filter((entry) => {
+    if (onlyNotReviewed && getVocabBucket(entry) !== "not-reviewed") return false;
+    if (timelineDays === "all") return true;
+    const cutoff = now - timelineDays * 86_400_000;
+    return entry.lastSeen < cutoff;
+  });
+}
+
+function isClearPopoverOpen(els: ReturnType<typeof getElements>): boolean {
+  return !!els.clearPopover && !els.clearPopover.classList.contains("hidden");
+}
+
+function closeClearPopover(els: ReturnType<typeof getElements>): void {
+  if (!els.clearPopover) return;
+  els.clearPopover.classList.add("hidden");
+  els.clearVocabBtn?.setAttribute("aria-expanded", "false");
+  if (els.clearConfirmInput) els.clearConfirmInput.value = "";
+  if (els.clearConfirmRow) els.clearConfirmRow.classList.add("hidden");
+}
+
+function openClearPopover(els: ReturnType<typeof getElements>): void {
+  if (!els.clearPopover) return;
+  els.clearPopover.classList.remove("hidden");
+  els.clearVocabBtn?.setAttribute("aria-expanded", "true");
+  void refreshClearPopoverState(els);
+}
+
+/**
+ * Recomputes the live count + execute-button enabled state from the
+ * current popover inputs. Toggles the type-to-confirm row in/out based
+ * on whether timeline === "all"; the row stays visible only for that
+ * case so the user isn't asked to type DELETE for a 12-entry prune.
+ */
+async function refreshClearPopoverState(
+  els: ReturnType<typeof getElements>,
+): Promise<void> {
+  if (!els.clearExecute || !els.clearTimeline) return;
+  const timeline = parseClearTimelineDays(els.clearTimeline.value);
+  const onlyNotReviewed = !!els.clearOnlyNotReviewed?.checked;
+
+  const vocab = await getAllVocab();
+  const targets = selectClearTargets(vocab, timeline, onlyNotReviewed);
+  const count = targets.length;
+
+  els.clearExecute.textContent = `Clear ${count} ${count === 1 ? "entry" : "entries"}`;
+
+  const isAllTime = timeline === "all";
+  if (els.clearConfirmRow) {
+    els.clearConfirmRow.classList.toggle("hidden", !isAllTime);
+  }
+
+  const confirmOk =
+    !isAllTime || (els.clearConfirmInput?.value.trim() === CLEAR_CONFIRM_PHRASE);
+  els.clearExecute.disabled = count === 0 || !confirmOk;
+  els.clearExecute.classList.toggle("clear-execute-btn-armed", count > 0 && confirmOk);
+}
+
+function setupClearPopover(els: ReturnType<typeof getElements>): void {
+  // Older callers / minimal test fixtures may not include the popover
+  // markup; fall back to the simple confirm() flow so the page still
+  // works without the new UI mounted.
+  if (
+    !els.clearPopover ||
+    !els.clearTimeline ||
+    !els.clearExecute ||
+    !els.clearAnchor
+  ) {
+    els.clearVocabBtn?.addEventListener("click", async () => {
+      if (confirm("Clear all recorded words?")) {
+        await clearVocab();
+        renderVocabList(els);
+      }
+    });
+    return;
+  }
+
+  els.clearVocabBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (isClearPopoverOpen(els)) {
+      closeClearPopover(els);
+    } else {
+      openClearPopover(els);
+    }
+  });
+
+  els.clearTimeline.addEventListener("change", () => {
+    void refreshClearPopoverState(els);
+  });
+  els.clearOnlyNotReviewed?.addEventListener("change", () => {
+    void refreshClearPopoverState(els);
+  });
+  els.clearConfirmInput?.addEventListener("input", () => {
+    void refreshClearPopoverState(els);
+  });
+
+  // Keep clicks inside the popover from bubbling to the outside-click
+  // handler that closes it.
+  els.clearPopover.addEventListener("click", (e) => {
+    e.stopPropagation();
+  });
+
+  els.clearExecute.addEventListener("click", async () => {
+    if (!els.clearTimeline || !els.clearExecute) return;
+    const timeline = parseClearTimelineDays(els.clearTimeline.value);
+    const onlyNotReviewed = !!els.clearOnlyNotReviewed?.checked;
+
+    const vocab = await getAllVocab();
+    const targets = selectClearTargets(vocab, timeline, onlyNotReviewed);
+    if (targets.length === 0) return;
+
+    // Fast path: nuking the entire store with no filter. Skips the
+    // per-entry walk and lets the storage layer drop the whole key.
+    if (timeline === "all" && !onlyNotReviewed && targets.length === vocab.length) {
+      await clearVocab();
+    } else {
+      await removeWords(targets.map((e) => e.chars));
+    }
+
+    showStatus(els, `Cleared ${targets.length} ${targets.length === 1 ? "word" : "words"}.`, "success");
+    closeClearPopover(els);
+    await renderVocabList(els);
+  });
+
+  // Outside-click + Escape close the popover. Bound on document so any
+  // click outside the anchor — including in the reader pane behind the
+  // hub — dismisses cleanly.
+  document.addEventListener("click", (e) => {
+    if (!isClearPopoverOpen(els)) return;
+    const target = e.target as Node | null;
+    if (target && els.clearAnchor?.contains(target)) return;
+    closeClearPopover(els);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && isClearPopoverOpen(els)) {
+      closeClearPopover(els);
+    }
+  });
+}
+
 // ─── Export / Import ─────────────────────────────────────────────────
 
 let statusTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1456,12 +1636,7 @@ export async function initHub(): Promise<void> {
 
   // Vocab controls
   els.vocabSort.addEventListener("change", () => renderVocabList(els));
-  els.clearVocabBtn.addEventListener("click", async () => {
-    if (confirm("Clear all recorded words?")) {
-      await clearVocab();
-      renderVocabList(els);
-    }
-  });
+  setupClearPopover(els);
 
   // Export / Import
   els.exportBtn.addEventListener("click", () => handleExport(els));

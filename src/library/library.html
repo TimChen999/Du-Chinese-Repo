@@ -170,7 +170,30 @@
             <input type="file" id="import-file-input" accept=".json" hidden />
             <span id="io-status" class="io-status"></span>
           </div>
-          <button type="button" id="clear-vocab" class="clear-btn">Clear List</button>
+          <div class="clear-anchor">
+            <button type="button" id="clear-vocab" class="clear-btn" aria-haspopup="dialog" aria-expanded="false">Clear&hellip;</button>
+            <div id="clear-popover" class="clear-popover hidden" role="dialog" aria-label="Clear vocabulary">
+              <div class="clear-popover-row">
+                <label for="clear-timeline" class="clear-popover-label">Clear entries</label>
+                <select id="clear-timeline" class="clear-popover-select">
+                  <option value="7">Older than 7 days</option>
+                  <option value="30" selected>Older than 30 days</option>
+                  <option value="180">Older than 6 months</option>
+                  <option value="365">Older than 1 year</option>
+                  <option value="all">All time</option>
+                </select>
+              </div>
+              <label class="clear-popover-checkbox">
+                <input type="checkbox" id="clear-only-not-reviewed" />
+                <span>Only clear &ldquo;Not reviewed&rdquo;</span>
+              </label>
+              <div id="clear-confirm-row" class="clear-popover-row clear-confirm-row hidden">
+                <label for="clear-confirm-input" class="clear-popover-label">Type <strong>DELETE</strong> to confirm</label>
+                <input type="text" id="clear-confirm-input" class="clear-popover-input" autocomplete="off" />
+              </div>
+              <button type="button" id="clear-execute" class="clear-execute-btn" disabled>Clear 0 entries</button>
+            </div>
+          </div>
         </div>
         <div id="vocab-bucket-summary" class="vocab-bucket-summary"></div>
         <div id="vocab-list" class="vocab-list"></div>
