@@ -205,11 +205,15 @@ input[type="range"]:focus-visible {
 }
 
 /* ─── Scrollbars + native controls ───────────────────────────── */
-/* Theme the popup body scroll (overflow past Chrome's max popup
+/* Theme the popup viewport scroll (overflow past Chrome's max popup
    height) and the recents list. accent-color paints the Font Size
    range slider, checkboxes, and radios so they stop showing the
-   Windows-blue default against sepia/dark backgrounds. */
+   Windows-blue default against sepia/dark backgrounds.
+   NOTE: when <body> content overflows the popup viewport, Chrome
+   paints the scrollbar on <html>, not <body> -- so the rules target
+   html (and keep body for safety) plus .vocab-list explicitly. */
 
+html,
 body,
 .vocab-list {
   scrollbar-width: thin;
@@ -220,23 +224,27 @@ body {
   accent-color: #3b82f6;
 }
 
+html::-webkit-scrollbar,
 body::-webkit-scrollbar,
 .vocab-list::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
+html::-webkit-scrollbar-track,
 body::-webkit-scrollbar-track,
 .vocab-list::-webkit-scrollbar-track {
   background: transparent;
 }
 
+html::-webkit-scrollbar-thumb,
 body::-webkit-scrollbar-thumb,
 .vocab-list::-webkit-scrollbar-thumb {
   background: #d1d5db;
   border-radius: 3px;
 }
 
+html::-webkit-scrollbar-thumb:hover,
 body::-webkit-scrollbar-thumb:hover,
 .vocab-list::-webkit-scrollbar-thumb:hover {
   background: #3b82f6;
@@ -909,15 +917,24 @@ body[data-theme="dark"] {
   accent-color: #60a5fa;
 }
 
+/* When the body overflows the popup viewport, the painted scrollbar
+   lives on <html>, not <body>. data-theme is set on body, so :has()
+   pulls the theme selector up to html for the viewport scrollbar. */
+html:has(body[data-theme="dark"]) {
+  scrollbar-color: #4b5563 transparent;
+}
+
 body[data-theme="dark"] .vocab-list {
   scrollbar-color: #4b5563 transparent;
 }
 
+html:has(body[data-theme="dark"])::-webkit-scrollbar-thumb,
 body[data-theme="dark"]::-webkit-scrollbar-thumb,
 body[data-theme="dark"] .vocab-list::-webkit-scrollbar-thumb {
   background: #4b5563;
 }
 
+html:has(body[data-theme="dark"])::-webkit-scrollbar-thumb:hover,
 body[data-theme="dark"]::-webkit-scrollbar-thumb:hover,
 body[data-theme="dark"] .vocab-list::-webkit-scrollbar-thumb:hover {
   background: #60a5fa;
@@ -1157,15 +1174,21 @@ body[data-theme="sepia"] {
   accent-color: #b8860b;
 }
 
+html:has(body[data-theme="sepia"]) {
+  scrollbar-color: #d4c8ab transparent;
+}
+
 body[data-theme="sepia"] .vocab-list {
   scrollbar-color: #d4c8ab transparent;
 }
 
+html:has(body[data-theme="sepia"])::-webkit-scrollbar-thumb,
 body[data-theme="sepia"]::-webkit-scrollbar-thumb,
 body[data-theme="sepia"] .vocab-list::-webkit-scrollbar-thumb {
   background: #d4c8ab;
 }
 
+html:has(body[data-theme="sepia"])::-webkit-scrollbar-thumb:hover,
 body[data-theme="sepia"]::-webkit-scrollbar-thumb:hover,
 body[data-theme="sepia"] .vocab-list::-webkit-scrollbar-thumb:hover {
   background: #b8860b;
