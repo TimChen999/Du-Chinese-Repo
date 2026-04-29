@@ -5,12 +5,14 @@ import {
   _setCedictForTests,
   ensureDictionaryLoaded,
   findLongest,
+  formatModifier,
   formatPinyin,
   formatPinyinSyllable,
   isDictionaryReady,
   lookupExact,
   parseCedict,
   parseLine,
+  tryParseModifier,
 } from "../../src/shared/cedict-lookup";
 
 describe("parseLine", () => {
@@ -28,6 +30,7 @@ describe("parseLine", () => {
     const line = "你好 你好 [ni3 hao3] /hello/";
     const e = parseLine(line);
     expect(e?.definitions).toEqual(["hello"]);
+    expect(e?.modifiers).toEqual([]);
   });
 
   it("returns null for malformed lines (no brackets)", () => {
@@ -36,6 +39,27 @@ describe("parseLine", () => {
 
   it("returns null for malformed lines (no headword space)", () => {
     expect(parseLine("中国[zhong1 guo2] /China/")).toBeNull();
+  });
+
+  it("extracts CC-CEDICT modifier segments away from the gloss", () => {
+    const e = parseLine("圖片 图片 [tu2 pian4] /picture; photograph/CL:張|张[zhang1]/");
+    expect(e?.definitions).toEqual(["picture; photograph"]);
+    expect(e?.modifiers).toEqual([
+      {
+        kind: "classifier",
+        refs: [{ trad: "張", simp: "张", pinyinNumeric: "zhang1" }],
+      },
+    ]);
+  });
+
+  it("keeps inline (CL:...) notation in the gloss (sense-scoped, not entry-level)", () => {
+    const e = parseLine(
+      "望遠鏡 望远镜 [wang4 yuan3 jing4] /telescope (CL:部[bu4]); binoculars (CL:副[fu4])/",
+    );
+    expect(e?.definitions).toEqual([
+      "telescope (CL:部[bu4]); binoculars (CL:副[fu4])",
+    ]);
+    expect(e?.modifiers).toEqual([]);
   });
 });
 
@@ -199,5 +223,182 @@ describe("formatPinyin (multi-syllable)", () => {
 
   it("handles empty input", () => {
     expect(formatPinyin("", "toneMarks")).toBe("");
+  });
+});
+
+describe("tryParseModifier — strict matching", () => {
+  it("matches a single classifier with trad|simp pair", () => {
+    expect(tryParseModifier("CL:張|张[zhang1]")).toEqual({
+      kind: "classifier",
+      refs: [{ trad: "張", simp: "张", pinyinNumeric: "zhang1" }],
+    });
+  });
+
+  it("matches multiple comma-separated classifiers", () => {
+    expect(tryParseModifier("CL:尊[zun1], 張|张[zhang1]")).toEqual({
+      kind: "classifier",
+      refs: [
+        { trad: "尊", simp: "尊", pinyinNumeric: "zun1" },
+        { trad: "張", simp: "张", pinyinNumeric: "zhang1" },
+      ],
+    });
+  });
+
+  it("matches comma-separated classifiers with no space after comma", () => {
+    expect(tryParseModifier("CL:份[fen4],頓|顿[dun4]")).toEqual({
+      kind: "classifier",
+      refs: [
+        { trad: "份", simp: "份", pinyinNumeric: "fen4" },
+        { trad: "頓", simp: "顿", pinyinNumeric: "dun4" },
+      ],
+    });
+  });
+
+  it("matches `abbr. for` cross-reference", () => {
+    expect(
+      tryParseModifier("abbr. for 百科全書|百科全书[bai3 ke1 quan2 shu1]"),
+    ).toEqual({
+      kind: "abbrFor",
+      ref: {
+        trad: "百科全書",
+        simp: "百科全书",
+        pinyinNumeric: "bai3 ke1 quan2 shu1",
+      },
+    });
+  });
+
+  it("matches `old variant of` with single-char ref (no | pair)", () => {
+    expect(tryParseModifier("old variant of 五[wu3]")).toEqual({
+      kind: "oldVariantOf",
+      ref: { trad: "五", simp: "五", pinyinNumeric: "wu3" },
+    });
+  });
+
+  it("matches `Taiwan pr.` and `also pr.`", () => {
+    expect(tryParseModifier("Taiwan pr. [xia4hai2]")).toEqual({
+      kind: "altPronunciation",
+      pinyinNumeric: "xia4hai2",
+      region: "Taiwan",
+    });
+    expect(tryParseModifier("also pr. [zhong4 yong4]")).toEqual({
+      kind: "altPronunciation",
+      pinyinNumeric: "zhong4 yong4",
+    });
+  });
+
+  it("matches `surname X` with Latin romanization", () => {
+    expect(tryParseModifier("surname Ding")).toEqual({
+      kind: "surname",
+      name: "Ding",
+    });
+  });
+
+  it("matches the other cross-reference verbs", () => {
+    expect(tryParseModifier("see 基友[ji1 you3]")).toMatchObject({
+      kind: "see",
+    });
+    expect(tryParseModifier("see also 個|个[ge4]")).toMatchObject({
+      kind: "seeAlso",
+    });
+    expect(tryParseModifier("variant of 個|个[ge4]")).toMatchObject({
+      kind: "variantOf",
+    });
+    expect(tryParseModifier("erhua variant of 花[hua1]")).toMatchObject({
+      kind: "erhuaOf",
+    });
+    expect(tryParseModifier("short for 個|个[ge4]")).toMatchObject({
+      kind: "shortFor",
+    });
+    expect(tryParseModifier("equivalent to 個|个[ge4]")).toMatchObject({
+      kind: "equivalentTo",
+    });
+    expect(tryParseModifier("also written 個|个[ge4]")).toMatchObject({
+      kind: "alsoWritten",
+    });
+  });
+
+  it("rejects partial matches — segment must be the full modifier", () => {
+    // Has trailing prose after the ref → not a pure modifier.
+    expect(
+      tryParseModifier("variant of 個|个[ge4] used in some contexts"),
+    ).toBeNull();
+    // Missing the bracketed pinyin.
+    expect(tryParseModifier("variant of 個")).toBeNull();
+    // Inline parenthesised CL: inside a definition is NOT extracted.
+    expect(tryParseModifier("telescope (CL:部[bu4])")).toBeNull();
+    // Plain English definition.
+    expect(tryParseModifier("picture; photograph")).toBeNull();
+    // (idiom) tag at start of segment is NOT a modifier (sense-level).
+    expect(tryParseModifier("(idiom) to take the lead")).toBeNull();
+  });
+
+  it("rejects `surname` with non-Latin payload (avoid garbage)", () => {
+    // Strict: only Latin-romanized surnames are accepted.
+    expect(tryParseModifier("surname 张")).toBeNull();
+    expect(tryParseModifier("surname")).toBeNull();
+  });
+});
+
+describe("formatModifier", () => {
+  it("formats classifiers with simp char + tone-marked pinyin", () => {
+    expect(
+      formatModifier(
+        {
+          kind: "classifier",
+          refs: [{ trad: "張", simp: "张", pinyinNumeric: "zhang1" }],
+        },
+        "toneMarks",
+      ),
+    ).toBe("Classifier: 张 zhāng");
+  });
+
+  it("pluralises label when multiple classifier refs", () => {
+    expect(
+      formatModifier(
+        {
+          kind: "classifier",
+          refs: [
+            { trad: "尊", simp: "尊", pinyinNumeric: "zun1" },
+            { trad: "張", simp: "张", pinyinNumeric: "zhang1" },
+          ],
+        },
+        "toneMarks",
+      ),
+    ).toBe("Classifiers: 尊 zūn, 张 zhāng");
+  });
+
+  it("formats abbr. for with tone-marked pinyin", () => {
+    expect(
+      formatModifier(
+        {
+          kind: "abbrFor",
+          ref: {
+            trad: "百科全書",
+            simp: "百科全书",
+            pinyinNumeric: "bai3 ke1 quan2 shu1",
+          },
+        },
+        "toneMarks",
+      ),
+    ).toBe("Abbreviation of: 百科全书 bǎi kē quán shū");
+  });
+
+  it("formats Taiwan pronunciation with tone marks", () => {
+    expect(
+      formatModifier(
+        {
+          kind: "altPronunciation",
+          pinyinNumeric: "zhong4 yong4",
+          region: "Taiwan",
+        },
+        "toneMarks",
+      ),
+    ).toBe("Taiwan pr.: zhòng yòng");
+  });
+
+  it("formats surname plainly", () => {
+    expect(
+      formatModifier({ kind: "surname", name: "Ding" }, "toneMarks"),
+    ).toBe("Surname: Ding");
   });
 });

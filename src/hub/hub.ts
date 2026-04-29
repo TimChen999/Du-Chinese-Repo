@@ -22,6 +22,13 @@ import {
 } from "../shared/constants";
 import { translateExampleSentence } from "../shared/translate-example";
 import {
+  ensureDictionaryLoaded,
+  formatModifier,
+  formatPinyin,
+  isDictionaryReady,
+  lookupExact,
+} from "../shared/cedict-lookup";
+import {
   applyReviewResult,
   bucketLabel,
   getVocabBucket,
@@ -432,6 +439,48 @@ function renderExamplesSection(
   return section;
 }
 
+/**
+ * Renders CC-CEDICT dictionary details for `chars` into `container`:
+ *  - Per-reading rows (pinyin + first 2 definitions) when the headword
+ *    has multiple readings (homographs like 王 / 熬).
+ *  - Modifier rows (classifiers, "abbr. for", "Taiwan pr.", etc.),
+ *    nested under their owning reading when readings are visible,
+ *    flat when there's only one reading.
+ *
+ * No-op when the dictionary isn't loaded or the headword has no entry;
+ * safe to call repeatedly (clears prior contents on each call).
+ */
+function fillCardDetails(container: HTMLElement, chars: string): void {
+  while (container.firstChild) container.removeChild(container.firstChild);
+  const entries = lookupExact(chars);
+  if (!entries) return;
+  const showReadings = entries.length > 1;
+  for (const entry of entries) {
+    if (showReadings) {
+      const reading = document.createElement("div");
+      reading.className = "vocab-card-reading";
+      const pinyin = document.createElement("span");
+      pinyin.className = "vocab-card-reading-pinyin";
+      pinyin.textContent = formatPinyin(entry.pinyinNumeric, "toneMarks");
+      const def = document.createElement("span");
+      def.className = "vocab-card-reading-def";
+      def.textContent = entry.definitions.slice(0, 2).join("; ");
+      reading.appendChild(pinyin);
+      reading.appendChild(document.createTextNode(" — "));
+      reading.appendChild(def);
+      container.appendChild(reading);
+    }
+    for (const mod of entry.modifiers) {
+      const row = document.createElement("div");
+      row.className = showReadings
+        ? "vocab-card-modifier vocab-card-modifier-nested"
+        : "vocab-card-modifier";
+      row.textContent = formatModifier(mod, "toneMarks");
+      container.appendChild(row);
+    }
+  }
+}
+
 async function showVocabCard(
   entry: VocabEntry,
   els: ReturnType<typeof getElements>,
@@ -460,6 +509,67 @@ async function showVocabCard(
   const def = document.createElement("div");
   def.className = "vocab-card-def";
   def.textContent = entry.definition;
+
+  // CC-CEDICT dictionary details (alt readings + modifiers) pulled live
+  // from the dictionary at render time. Mirrors the popup's Details
+  // toggle: a small button sits under the gloss; clicking it expands a
+  // panel showing alt readings + modifiers. Hidden entirely when the
+  // headword has nothing extra to show (single reading, no modifiers)
+  // or when CC-CEDICT isn't loaded.
+  const detailsBtn = document.createElement("button");
+  detailsBtn.type = "button";
+  detailsBtn.className = "vocab-card-details-btn";
+  detailsBtn.hidden = true;
+
+  const details = document.createElement("div");
+  details.className = "vocab-card-details";
+  details.hidden = true;
+
+  detailsBtn.addEventListener("click", () => {
+    if (details.hidden) {
+      fillCardDetails(details, entry.chars);
+      details.hidden = false;
+      detailsBtn.setAttribute("aria-expanded", "true");
+    } else {
+      details.hidden = true;
+      detailsBtn.setAttribute("aria-expanded", "false");
+    }
+  });
+
+  function refreshDetailsAffordance(): void {
+    const entries = lookupExact(entry.chars);
+    if (!entries || entries.length === 0) {
+      detailsBtn.hidden = true;
+      details.hidden = true;
+      return;
+    }
+    const hasMultipleReadings = entries.length > 1;
+    const hasModifiers = entries.some((e) => e.modifiers.length > 0);
+    if (!hasMultipleReadings && !hasModifiers) {
+      detailsBtn.hidden = true;
+      details.hidden = true;
+      return;
+    }
+    detailsBtn.hidden = false;
+    detailsBtn.textContent = hasMultipleReadings
+      ? `${entries.length} readings`
+      : "Details";
+    detailsBtn.setAttribute("aria-expanded", details.hidden ? "false" : "true");
+    // If the panel is already open, re-render against the freshly
+    // loaded data so a late dictionary arrival doesn't leave it stale.
+    if (!details.hidden) fillCardDetails(details, entry.chars);
+  }
+  refreshDetailsAffordance();
+  if (!isDictionaryReady()) {
+    void ensureDictionaryLoaded()
+      .then(() => {
+        if (!document.body.contains(card)) return;
+        refreshDetailsAffordance();
+      })
+      .catch(() => {
+        /* warning already logged at init */
+      });
+  }
 
   const bucketRow = document.createElement("div");
   bucketRow.className = "vocab-card-bucket";
@@ -497,7 +607,7 @@ async function showVocabCard(
   });
 
   actions.appendChild(deleteBtn);
-  card.append(closeBtn, chars, pinyin, def, bucketRow, meta, actions);
+  card.append(closeBtn, chars, pinyin, def, detailsBtn, details, bucketRow, meta, actions);
 
   overlay.appendChild(card);
 
@@ -1954,6 +2064,14 @@ async function handleImport(
 export async function initHub(): Promise<void> {
   const els = getElements();
   await applyTheme();
+
+  // Fire-and-forget CC-CEDICT load so vocab cards can render dictionary
+  // modifiers (classifiers, "abbr. for", etc.) live without per-entry
+  // storage. The card's modifier section retroactively populates if the
+  // dictionary lands while a card is already open.
+  void ensureDictionaryLoaded().catch((err) => {
+    console.warn("[hub] CC-CEDICT load failed; vocab cards will skip modifier rows.", err);
+  });
 
   // Tab switching
   els.tabButtons.forEach((btn) => {

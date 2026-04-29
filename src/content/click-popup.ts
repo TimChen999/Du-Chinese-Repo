@@ -29,6 +29,7 @@
 import overlayStyles from "./overlay.css?inline";
 import type { LLMSentenceWord, PinyinStyle, Theme } from "../shared/types";
 import {
+  formatModifier,
   formatPinyin,
   lookupExact,
 } from "../shared/cedict-lookup";
@@ -521,22 +522,38 @@ function makeActionsRow(
     row.appendChild(btn);
   }
 
-  // Optional: a CC-CEDICT "more readings" button — collapsed for now
-  // unless we detect homographs. Lookup once at row build.
+  // CC-CEDICT "definition card" affordance. Shown whenever the headword
+  // has multiple readings OR any reading carries modifiers (classifiers,
+  // "abbr. for", surname tag, alternate pronunciations, etc.). The
+  // modifiers are *only* visible inside this expanded card -- they are
+  // intentionally stripped from the compact gloss line above so the
+  // first-glance popup stays free of CC-CEDICT raw notation.
   const others = lookupExact(word.chars);
-  if (others && others.length > 1) {
+  const hasMultipleReadings = !!others && others.length > 1;
+  const hasModifiers = !!others && others.some((e) => e.modifiers.length > 0);
+  if (others && (hasMultipleReadings || hasModifiers)) {
     const altBtn = document.createElement("button");
     altBtn.className = "pt-alt-btn";
-    altBtn.textContent = `${others.length} readings`;
-    altBtn.title = "Show all dictionary readings";
-    altBtn.addEventListener("click", () => toggleAltReadings(altBtn, others));
+    altBtn.textContent = hasMultipleReadings
+      ? `${others.length} readings`
+      : "Details";
+    altBtn.title = hasMultipleReadings
+      ? "Show all dictionary readings"
+      : "Show dictionary details";
+    altBtn.addEventListener("click", () =>
+      toggleAltReadings(altBtn, others, hasMultipleReadings),
+    );
     row.appendChild(altBtn);
   }
 
   return row;
 }
 
-function toggleAltReadings(btn: HTMLElement, hits: ReturnType<typeof lookupExact> extends infer R ? R : never): void {
+function toggleAltReadings(
+  btn: HTMLElement,
+  hits: ReturnType<typeof lookupExact> extends infer R ? R : never,
+  showReadingHeader: boolean,
+): void {
   if (!hits) return;
   const tier = btn.closest(".pt-word-tier");
   if (!tier) return;
@@ -549,18 +566,26 @@ function toggleAltReadings(btn: HTMLElement, hits: ReturnType<typeof lookupExact
   list.className = "pt-alt-list";
   for (const entry of hits) {
     const li = document.createElement("li");
-    const ph = document.createElement("span");
-    ph.className = "pt-alt-pinyin";
-    ph.textContent = formatPinyin(entry.pinyinNumeric, "toneMarks");
-    const def = document.createElement("span");
-    def.className = "pt-alt-def";
-    def.textContent = entry.definitions.slice(0, 2).join("; ");
-    li.appendChild(ph);
-    li.appendChild(document.createTextNode(" — "));
-    li.appendChild(def);
-    list.appendChild(li);
+    if (showReadingHeader) {
+      const ph = document.createElement("span");
+      ph.className = "pt-alt-pinyin";
+      ph.textContent = formatPinyin(entry.pinyinNumeric, "toneMarks");
+      const def = document.createElement("span");
+      def.className = "pt-alt-def";
+      def.textContent = entry.definitions.slice(0, 2).join("; ");
+      li.appendChild(ph);
+      li.appendChild(document.createTextNode(" — "));
+      li.appendChild(def);
+    }
+    for (const mod of entry.modifiers) {
+      const modEl = document.createElement("div");
+      modEl.className = "pt-alt-modifier";
+      modEl.textContent = formatModifier(mod, "toneMarks");
+      li.appendChild(modEl);
+    }
+    if (li.childNodes.length > 0) list.appendChild(li);
   }
-  tier.appendChild(list);
+  if (list.childNodes.length > 0) tier.appendChild(list);
 }
 
 /**

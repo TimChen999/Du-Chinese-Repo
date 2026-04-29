@@ -729,6 +729,103 @@ button.vocab-bucket-summary-chip.active {
   margin-bottom: 10px;
 }
 
+.vocab-card-details-btn {
+  align-self: flex-start;
+  padding: 3px 10px;
+  margin-bottom: 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #374151;
+  font-size: 11px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.vocab-card-details-btn:hover {
+  border-color: #6366f1;
+  color: #4338ca;
+}
+
+.vocab-card-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+
+/* Ensure the HTML `hidden` attribute wins over the explicit display
+ * rules above; without this the panel and its trigger button stay
+ * visible after the first toggle because `display: flex` / button
+ * defaults beat the UA stylesheet's [hidden] { display: none }. */
+.vocab-card-details[hidden],
+.vocab-card-details-btn[hidden] {
+  display: none;
+}
+
+.vocab-card-details:empty {
+  display: none;
+}
+
+.vocab-card-reading {
+  font-size: 13px;
+  color: #4b5563;
+  line-height: 1.5;
+}
+
+.vocab-card-reading-pinyin {
+  font-weight: 600;
+}
+
+.vocab-card-modifier {
+  font-size: 13px;
+  color: #6b7280;
+  line-height: 1.4;
+}
+
+.vocab-card-modifier-nested {
+  padding-left: 12px;
+}
+
+body[data-theme="dark"] .vocab-card-reading { color: #d1d5db; }
+body[data-theme="dark"] .vocab-card-modifier { color: #9ca3af; }
+body[data-theme="dark"] .vocab-card-details-btn {
+  background: #1f2937;
+  border-color: #4b5563;
+  color: #d1d5db;
+}
+body[data-theme="dark"] .vocab-card-details-btn:hover {
+  border-color: #818cf8;
+  color: #a5b4fc;
+}
+
+body[data-theme="sepia"] .vocab-card-reading { color: #5c4b37; }
+body[data-theme="sepia"] .vocab-card-modifier { color: #8b7355; }
+body[data-theme="sepia"] .vocab-card-details-btn {
+  background: #f4ecd8;
+  border-color: #d4c8ab;
+  color: #5c4b37;
+}
+body[data-theme="sepia"] .vocab-card-details-btn:hover {
+  border-color: #b8860b;
+  color: #b8860b;
+}
+
+@media (prefers-color-scheme: dark) {
+  body[data-theme="auto"] .vocab-card-reading { color: #d1d5db; }
+  body[data-theme="auto"] .vocab-card-modifier { color: #9ca3af; }
+  body[data-theme="auto"] .vocab-card-details-btn {
+    background: #1f2937;
+    border-color: #4b5563;
+    color: #d1d5db;
+  }
+  body[data-theme="auto"] .vocab-card-details-btn:hover {
+    border-color: #818cf8;
+    color: #a5b4fc;
+  }
+}
+
 .vocab-card-meta {
   font-size: 12px;
   color: #9ca3af;

@@ -20,7 +20,12 @@ import {
   CEDICT_DEFAULT_LOOKUP_CHARS,
   CEDICT_DICT_PATH,
 } from "./constants";
-import type { CedictEntry, CedictHit } from "./cedict-types";
+import type {
+  CedictEntry,
+  CedictHit,
+  CedictModifier,
+  CedictRef,
+} from "./cedict-types";
 
 // ─── Module state ──────────────────────────────────────────────────
 
@@ -178,10 +183,183 @@ export function parseLine(line: string): CedictEntry | null {
   const trimmed = defsBody.endsWith("/")
     ? defsBody.slice(0, -1)
     : defsBody;
-  const definitions = trimmed.split("/").filter((s) => s.length > 0);
-  if (definitions.length === 0) return null;
+  const segments = trimmed.split("/").filter((s) => s.length > 0);
+  if (segments.length === 0) return null;
 
-  return { traditional, simplified, pinyinNumeric, definitions };
+  const definitions: string[] = [];
+  const modifiers: CedictModifier[] = [];
+  for (const seg of segments) {
+    const mod = tryParseModifier(seg);
+    if (mod) modifiers.push(mod);
+    else definitions.push(seg);
+  }
+  if (definitions.length === 0 && modifiers.length === 0) return null;
+
+  return { traditional, simplified, pinyinNumeric, definitions, modifiers };
+}
+
+// ─── Modifier extraction (strict, deterministic) ───────────────────
+//
+// Each `/`-segment is tested against a fixed set of patterns. A segment
+// is extracted as a modifier ONLY when the entire segment matches one
+// of these shapes -- no partial extraction, no fuzzy matching. This
+// guarantees the popup renders modifiers without ever surfacing
+// half-parsed prose.
+//
+// REF = `simp[pinyin]` or `trad|simp[pinyin]`, where simp/trad are runs
+// of Han characters and pinyin is the bracketed CC-CEDICT numeric form.
+
+const HAN = "[\\p{Script=Han}]+";
+const PINYIN_BODY = "[A-Za-z0-9: ]+";
+const REF_SOURCE = `(${HAN})(?:\\|(${HAN}))?\\[(${PINYIN_BODY})\\]`;
+
+const RE_CLASSIFIER = new RegExp(
+  `^CL:${REF_SOURCE}(?:,\\s*${REF_SOURCE})*$`,
+  "u",
+);
+const RE_REF_LIST_ITEM = new RegExp(REF_SOURCE, "gu");
+
+const RE_SURNAME = /^surname ([A-Z][A-Za-z']*)$/;
+const RE_TAIWAN_PR = /^Taiwan pr\. \[([A-Za-z0-9: ]+)\]$/;
+const RE_ALSO_PR = /^also pr\. \[([A-Za-z0-9: ]+)\]$/;
+
+const PREFIX_MODIFIERS: Array<{
+  prefix: string;
+  kind: Extract<
+    CedictModifier,
+    {
+      kind:
+        | "variantOf"
+        | "oldVariantOf"
+        | "abbrFor"
+        | "shortFor"
+        | "equivalentTo"
+        | "erhuaOf"
+        | "see"
+        | "seeAlso"
+        | "alsoWritten";
+    }
+  >["kind"];
+}> = [
+  { prefix: "old variant of ", kind: "oldVariantOf" },
+  { prefix: "variant of ", kind: "variantOf" },
+  { prefix: "erhua variant of ", kind: "erhuaOf" },
+  { prefix: "abbr. for ", kind: "abbrFor" },
+  { prefix: "short for ", kind: "shortFor" },
+  { prefix: "equivalent to ", kind: "equivalentTo" },
+  { prefix: "see also ", kind: "seeAlso" },
+  { prefix: "see ", kind: "see" },
+  { prefix: "also written ", kind: "alsoWritten" },
+];
+
+const RE_REF_FULL = new RegExp(`^${REF_SOURCE}$`, "u");
+
+/**
+ * Tests a single `/`-segment against the strict modifier patterns.
+ * Returns a structured modifier on a full match, or null if the segment
+ * is a regular definition (or anything we don't deterministically
+ * recognise).
+ */
+export function tryParseModifier(segment: string): CedictModifier | null {
+  // Classifier: CL:REF(,REF)*
+  if (segment.startsWith("CL:") && RE_CLASSIFIER.test(segment)) {
+    const refs: CedictRef[] = [];
+    const body = segment.slice(3);
+    for (const m of body.matchAll(RE_REF_LIST_ITEM)) {
+      refs.push(refFromMatch(m[1], m[2], m[3]));
+    }
+    if (refs.length > 0) return { kind: "classifier", refs };
+  }
+
+  // Surname: Latin-only romanization (strict).
+  const surnameMatch = RE_SURNAME.exec(segment);
+  if (surnameMatch) return { kind: "surname", name: surnameMatch[1] };
+
+  // Alternate pronunciations.
+  const taiwanMatch = RE_TAIWAN_PR.exec(segment);
+  if (taiwanMatch) {
+    return {
+      kind: "altPronunciation",
+      pinyinNumeric: taiwanMatch[1].trim(),
+      region: "Taiwan",
+    };
+  }
+  const alsoMatch = RE_ALSO_PR.exec(segment);
+  if (alsoMatch) {
+    return { kind: "altPronunciation", pinyinNumeric: alsoMatch[1].trim() };
+  }
+
+  // Cross-reference verbs: prefix + single REF, with the entire segment
+  // consumed by the prefix and exactly one REF.
+  for (const { prefix, kind } of PREFIX_MODIFIERS) {
+    if (!segment.startsWith(prefix)) continue;
+    const rest = segment.slice(prefix.length);
+    const m = RE_REF_FULL.exec(rest);
+    if (m) {
+      return { kind, ref: refFromMatch(m[1], m[2], m[3]) };
+    }
+  }
+
+  return null;
+}
+
+function refFromMatch(
+  first: string,
+  second: string | undefined,
+  pinyin: string,
+): CedictRef {
+  if (second) return { trad: first, simp: second, pinyinNumeric: pinyin.trim() };
+  return { trad: first, simp: first, pinyinNumeric: pinyin.trim() };
+}
+
+/**
+ * Renders a modifier as a human-readable string for the definition-card
+ * UI. Pinyin is converted to the requested style. The label "Classifier:"
+ * is pluralised when multiple refs are present.
+ */
+export function formatModifier(
+  mod: CedictModifier,
+  style: "toneMarks" | "toneNumbers" | "none",
+): string {
+  switch (mod.kind) {
+    case "classifier": {
+      const label = mod.refs.length > 1 ? "Classifiers" : "Classifier";
+      const parts = mod.refs.map((r) => formatRef(r, style));
+      return `${label}: ${parts.join(", ")}`;
+    }
+    case "surname":
+      return `Surname: ${mod.name}`;
+    case "altPronunciation": {
+      const region = mod.region ? `${mod.region} pr.` : "Also pr.";
+      return `${region}: ${formatPinyin(mod.pinyinNumeric, style)}`;
+    }
+    case "variantOf":
+      return `Variant of: ${formatRef(mod.ref, style)}`;
+    case "oldVariantOf":
+      return `Old variant of: ${formatRef(mod.ref, style)}`;
+    case "erhuaOf":
+      return `Erhua of: ${formatRef(mod.ref, style)}`;
+    case "abbrFor":
+      return `Abbreviation of: ${formatRef(mod.ref, style)}`;
+    case "shortFor":
+      return `Short for: ${formatRef(mod.ref, style)}`;
+    case "equivalentTo":
+      return `Equivalent to: ${formatRef(mod.ref, style)}`;
+    case "see":
+      return `See: ${formatRef(mod.ref, style)}`;
+    case "seeAlso":
+      return `See also: ${formatRef(mod.ref, style)}`;
+    case "alsoWritten":
+      return `Also written: ${formatRef(mod.ref, style)}`;
+  }
+}
+
+function formatRef(
+  ref: CedictRef,
+  style: "toneMarks" | "toneNumbers" | "none",
+): string {
+  const pinyin = formatPinyin(ref.pinyinNumeric, style);
+  return pinyin ? `${ref.simp} ${pinyin}` : ref.simp;
 }
 
 // ─── Pinyin formatting ─────────────────────────────────────────────

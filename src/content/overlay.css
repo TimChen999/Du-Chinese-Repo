@@ -578,6 +578,12 @@
 .pt-popup .pt-alt-list li { padding: 2px 0; }
 .pt-popup .pt-alt-pinyin { font-weight: 600; opacity: 0.9; }
 .pt-popup .pt-alt-def { opacity: 0.85; }
+.pt-popup .pt-alt-modifier {
+  opacity: 0.78;
+  font-size: calc(var(--hg-font-size, 16px) * 0.78);
+  padding-left: 8px;
+  padding-top: 1px;
+}
 
 /* Bottom tier: segmented Translation/Pinyin toggle on top of a single
  * content slot. Only the view selected by [data-view] is visible. */
