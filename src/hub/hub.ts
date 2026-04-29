@@ -481,6 +481,61 @@ function fillCardDetails(container: HTMLElement, chars: string): void {
   }
 }
 
+/**
+ * Renders a per-character breakdown into `container`. Each character of
+ * `chars` is looked up in CC-CEDICT and rendered with its canonical
+ * reading(s) and a short gloss (first 2 definitions, or first modifier
+ * when the entry is purely cross-references like 踏 -> "see 踏實").
+ *
+ * The pinyin shown here is CEDICT's canonical reading per character,
+ * which may differ from the contextual reading inside the word
+ * (e.g. 行 = xíng on its own but háng inside 银行). That's intentional:
+ * this panel answers "what does this character mean on its own?".
+ *
+ * Iterates by codepoint so rare CJK in supplementary planes (surrogate
+ * pairs) are handled as single characters rather than being split.
+ */
+function fillCharsBreakdown(container: HTMLElement, chars: string): void {
+  while (container.firstChild) container.removeChild(container.firstChild);
+  const charList = Array.from(chars);
+  // Dedupe so a repeated character (e.g. 中 in 中共中央) only contributes
+  // one set of readings to the panel — repetition inside the word adds
+  // no extra information about the character itself.
+  const seen = new Set<string>();
+  for (const ch of charList) {
+    if (seen.has(ch)) continue;
+    seen.add(ch);
+    const entries = lookupExact(ch);
+    if (!entries || entries.length === 0) continue;
+    for (const entry of entries) {
+      const row = document.createElement("div");
+      row.className = "vocab-card-char-row";
+
+      const han = document.createElement("span");
+      han.className = "vocab-card-char-han";
+      han.textContent = ch;
+
+      const pinyin = document.createElement("span");
+      pinyin.className = "vocab-card-char-pinyin";
+      pinyin.textContent = formatPinyin(entry.pinyinNumeric, "toneMarks");
+
+      const def = document.createElement("span");
+      def.className = "vocab-card-char-def";
+      let defText = entry.definitions.slice(0, 2).join("; ");
+      if (!defText && entry.modifiers.length > 0) {
+        defText = formatModifier(entry.modifiers[0], "toneMarks");
+      }
+      def.textContent = defText;
+
+      row.appendChild(han);
+      row.appendChild(pinyin);
+      row.appendChild(document.createTextNode(" — "));
+      row.appendChild(def);
+      container.appendChild(row);
+    }
+  }
+}
+
 async function showVocabCard(
   entry: VocabEntry,
   els: ReturnType<typeof getElements>,
@@ -560,11 +615,80 @@ async function showVocabCard(
     if (!details.hidden) fillCardDetails(details, entry.chars);
   }
   refreshDetailsAffordance();
+
+  // Standalone "Characters" section for multi-character words. Lives
+  // separately from the Details toggle above so it remains a one-click
+  // path to the per-character breakdown regardless of whether the
+  // word itself has alt readings or modifiers. Hidden when chars is a
+  // single character or when no sub-character has a CEDICT entry.
+  //
+  // Visual rhythm matches the EXAMPLE section above: a top divider line
+  // with an uppercase label, but the heading row is the toggle so the
+  // panel expands/collapses inline below it.
+  const charsSection = document.createElement("div");
+  charsSection.className = "vocab-card-chars-section";
+  charsSection.hidden = true;
+
+  const charsToggle = document.createElement("button");
+  charsToggle.type = "button";
+  charsToggle.className = "vocab-card-chars-toggle";
+  charsToggle.setAttribute("aria-expanded", "false");
+
+  const charsLabel = document.createElement("span");
+  charsLabel.className = "vocab-card-chars-toggle-label";
+  charsLabel.textContent = "Characters";
+
+  const charsIcon = document.createElement("span");
+  charsIcon.className = "vocab-card-chars-toggle-icon";
+  charsIcon.setAttribute("aria-hidden", "true");
+  charsIcon.textContent = "˅"; // ˅ — small downwards chevron, rotates 180° via CSS when expanded
+
+  charsToggle.append(charsLabel, charsIcon);
+
+  const charsPanel = document.createElement("div");
+  charsPanel.className = "vocab-card-chars-panel";
+  charsPanel.hidden = true;
+
+  charsToggle.addEventListener("click", () => {
+    if (charsPanel.hidden) {
+      fillCharsBreakdown(charsPanel, entry.chars);
+      charsPanel.hidden = false;
+      charsToggle.setAttribute("aria-expanded", "true");
+    } else {
+      charsPanel.hidden = true;
+      charsToggle.setAttribute("aria-expanded", "false");
+    }
+  });
+
+  charsSection.append(charsToggle, charsPanel);
+
+  function refreshCharsAffordance(): void {
+    const charList = Array.from(entry.chars);
+    if (charList.length < 2) {
+      charsSection.hidden = true;
+      charsPanel.hidden = true;
+      return;
+    }
+    const anyHasEntry = charList.some((ch) => {
+      const e = lookupExact(ch);
+      return !!e && e.length > 0;
+    });
+    if (!anyHasEntry) {
+      charsSection.hidden = true;
+      charsPanel.hidden = true;
+      return;
+    }
+    charsSection.hidden = false;
+    if (!charsPanel.hidden) fillCharsBreakdown(charsPanel, entry.chars);
+  }
+  refreshCharsAffordance();
+
   if (!isDictionaryReady()) {
     void ensureDictionaryLoaded()
       .then(() => {
         if (!document.body.contains(card)) return;
         refreshDetailsAffordance();
+        refreshCharsAffordance();
       })
       .catch(() => {
         /* warning already logged at init */
@@ -597,17 +721,66 @@ async function showVocabCard(
   const actions = document.createElement("div");
   actions.className = "vocab-card-actions";
 
+  // Two-step delete: the primary "Delete" button swaps to a
+  // Cancel | Confirm pair on first click. Cancel restores the primary
+  // button; Confirm performs the destructive removeWord. This guards
+  // against accidental clicks given the action's proximity to the
+  // Characters toggle directly above it.
   const deleteBtn = document.createElement("button");
+  deleteBtn.type = "button";
   deleteBtn.className = "vocab-card-delete";
   deleteBtn.textContent = "Delete";
-  deleteBtn.addEventListener("click", async () => {
+
+  const confirmRow = document.createElement("div");
+  confirmRow.className = "vocab-card-delete-confirm";
+  confirmRow.hidden = true;
+
+  const confirmPrompt = document.createElement("span");
+  confirmPrompt.className = "vocab-card-delete-prompt";
+  confirmPrompt.textContent = "Delete this word?";
+
+  const cancelBtn = document.createElement("button");
+  cancelBtn.type = "button";
+  cancelBtn.className = "vocab-card-delete-cancel";
+  cancelBtn.textContent = "Cancel";
+
+  const confirmBtn = document.createElement("button");
+  confirmBtn.type = "button";
+  confirmBtn.className = "vocab-card-delete-confirm-btn";
+  confirmBtn.textContent = "Delete";
+
+  confirmRow.append(confirmPrompt, cancelBtn, confirmBtn);
+
+  deleteBtn.addEventListener("click", () => {
+    deleteBtn.hidden = true;
+    confirmRow.hidden = false;
+    confirmBtn.focus();
+  });
+
+  cancelBtn.addEventListener("click", () => {
+    confirmRow.hidden = true;
+    deleteBtn.hidden = false;
+  });
+
+  confirmBtn.addEventListener("click", async () => {
     await removeWord(entry.chars);
     dismissVocabCard();
     renderVocabList(els);
   });
 
-  actions.appendChild(deleteBtn);
-  card.append(closeBtn, chars, pinyin, def, detailsBtn, details, bucketRow, meta, actions);
+  actions.append(deleteBtn, confirmRow);
+  card.append(
+    closeBtn,
+    chars,
+    pinyin,
+    def,
+    detailsBtn,
+    details,
+    bucketRow,
+    meta,
+    charsSection,
+    actions,
+  );
 
   overlay.appendChild(card);
 
@@ -634,7 +807,9 @@ async function showVocabCard(
   if (!document.body.contains(overlay)) return;
 
   const examples = renderExamplesSection(entry, els, settings.pinyinStyle);
-  if (examples) card.insertBefore(examples, actions);
+  // Insert above the Characters section so the per-character breakdown
+  // remains the bottom-most section before the action buttons.
+  if (examples) card.insertBefore(examples, charsSection);
 }
 
 // ─── Vocab List Rendering ────────────────────────────────────────────

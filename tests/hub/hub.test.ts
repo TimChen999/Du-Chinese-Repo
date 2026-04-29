@@ -861,8 +861,14 @@ describe("hub page", () => {
         sampleVocab.filter((e) => e.chars !== targetChars),
       );
 
+      // Two-step delete: first click reveals the inline Cancel | Confirm
+      // pair; the second click on Confirm performs the destructive call.
       const deleteBtn = document.querySelector(".vocab-card-delete") as HTMLButtonElement;
       deleteBtn.click();
+      const confirmBtn = document.querySelector(
+        ".vocab-card-delete-confirm-btn",
+      ) as HTMLButtonElement;
+      confirmBtn.click();
 
       await vi.waitFor(() => {
         expect(mockedRemoveWord).toHaveBeenCalledWith(targetChars);
@@ -871,6 +877,32 @@ describe("hub page", () => {
       await vi.waitFor(() => {
         expect(document.querySelector(".vocab-card-overlay")).toBeNull();
       });
+    });
+
+    it("delete cancel button restores the primary delete button without removing the word", async () => {
+      mockedGetAllVocab.mockResolvedValue([...sampleVocab]);
+      mockedRemoveWord.mockResolvedValue(undefined);
+      await loadHub();
+
+      const row = vocabList().querySelector(".vocab-row") as HTMLDivElement;
+      row.click();
+
+      const deleteBtn = document.querySelector(
+        ".vocab-card-delete",
+      ) as HTMLButtonElement;
+      deleteBtn.click();
+      const cancelBtn = document.querySelector(
+        ".vocab-card-delete-cancel",
+      ) as HTMLButtonElement;
+      cancelBtn.click();
+
+      expect(deleteBtn.hidden).toBe(false);
+      expect(
+        (document.querySelector(".vocab-card-delete-confirm") as HTMLDivElement)
+          .hidden,
+      ).toBe(true);
+      expect(mockedRemoveWord).not.toHaveBeenCalled();
+      expect(document.querySelector(".vocab-card-overlay")).not.toBeNull();
     });
 
     it("clicking overlay backdrop dismisses card", async () => {

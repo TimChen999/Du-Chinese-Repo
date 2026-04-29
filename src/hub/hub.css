@@ -788,8 +788,90 @@ button.vocab-bucket-summary-chip.active {
   padding-left: 12px;
 }
 
+/* Section divider for the per-character breakdown — matches the
+ * .vocab-card-examples block above so the card has a consistent
+ * section-header rhythm. The toggle is the heading row itself: a
+ * full-width clickable row with the label on the left and a chevron
+ * on the right that flips when expanded. */
+
+.vocab-card-chars-section {
+  margin: 0 0 16px;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+}
+
+.vocab-card-chars-section[hidden] {
+  display: none;
+}
+
+.vocab-card-chars-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 12px 0 10px;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  color: #6b7280;
+}
+
+.vocab-card-chars-toggle:hover {
+  color: #4338ca;
+}
+
+.vocab-card-chars-toggle-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.vocab-card-chars-toggle-icon {
+  font-size: 12px;
+  line-height: 1;
+  transition: transform 120ms ease;
+}
+
+.vocab-card-chars-toggle[aria-expanded="true"] .vocab-card-chars-toggle-icon {
+  transform: rotate(180deg);
+}
+
+.vocab-card-chars-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 6px;
+}
+
+.vocab-card-chars-panel[hidden] {
+  display: none;
+}
+
+.vocab-card-char-row {
+  font-size: 13px;
+  color: #4b5563;
+  line-height: 1.5;
+}
+
+.vocab-card-char-han {
+  font-weight: 600;
+  margin-right: 6px;
+}
+
+.vocab-card-char-pinyin {
+  font-weight: 600;
+}
+
 body[data-theme="dark"] .vocab-card-reading { color: #d1d5db; }
 body[data-theme="dark"] .vocab-card-modifier { color: #9ca3af; }
+body[data-theme="dark"] .vocab-card-char-row { color: #d1d5db; }
+body[data-theme="dark"] .vocab-card-chars-section { border-top-color: #374151; }
+body[data-theme="dark"] .vocab-card-chars-toggle { color: #9ca3af; }
+body[data-theme="dark"] .vocab-card-chars-toggle:hover { color: #a5b4fc; }
 body[data-theme="dark"] .vocab-card-details-btn {
   background: #1f2937;
   border-color: #4b5563;
@@ -802,6 +884,10 @@ body[data-theme="dark"] .vocab-card-details-btn:hover {
 
 body[data-theme="sepia"] .vocab-card-reading { color: #5c4b37; }
 body[data-theme="sepia"] .vocab-card-modifier { color: #8b7355; }
+body[data-theme="sepia"] .vocab-card-char-row { color: #5c4b37; }
+body[data-theme="sepia"] .vocab-card-chars-section { border-top-color: #d4c8ab; }
+body[data-theme="sepia"] .vocab-card-chars-toggle { color: #8b7355; }
+body[data-theme="sepia"] .vocab-card-chars-toggle:hover { color: #b8860b; }
 body[data-theme="sepia"] .vocab-card-details-btn {
   background: #f4ecd8;
   border-color: #d4c8ab;
@@ -815,6 +901,10 @@ body[data-theme="sepia"] .vocab-card-details-btn:hover {
 @media (prefers-color-scheme: dark) {
   body[data-theme="auto"] .vocab-card-reading { color: #d1d5db; }
   body[data-theme="auto"] .vocab-card-modifier { color: #9ca3af; }
+  body[data-theme="auto"] .vocab-card-char-row { color: #d1d5db; }
+  body[data-theme="auto"] .vocab-card-chars-section { border-top-color: #374151; }
+  body[data-theme="auto"] .vocab-card-chars-toggle { color: #9ca3af; }
+  body[data-theme="auto"] .vocab-card-chars-toggle:hover { color: #a5b4fc; }
   body[data-theme="auto"] .vocab-card-details-btn {
     background: #1f2937;
     border-color: #4b5563;
@@ -852,6 +942,56 @@ body[data-theme="sepia"] .vocab-card-details-btn:hover {
 .vocab-card-delete:hover {
   background: #fecaca;
   border-color: #f87171;
+}
+
+.vocab-card-delete[hidden],
+.vocab-card-delete-confirm[hidden] {
+  display: none;
+}
+
+.vocab-card-delete-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vocab-card-delete-prompt {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.vocab-card-delete-cancel {
+  padding: 6px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #374151;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.vocab-card-delete-cancel:hover {
+  border-color: #9ca3af;
+  color: #111827;
+}
+
+.vocab-card-delete-confirm-btn {
+  padding: 6px 16px;
+  border: 1px solid #ef4444;
+  border-radius: 6px;
+  background: #ef4444;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.vocab-card-delete-confirm-btn:hover {
+  background: #dc2626;
+  border-color: #dc2626;
 }
 
 /* ─── Vocab card examples ─────────────────────────────────────── */
@@ -1810,6 +1950,26 @@ body[data-theme="dark"] .vocab-card-delete:hover {
   border-color: #f87171;
 }
 
+body[data-theme="dark"] .vocab-card-delete-prompt { color: #9ca3af; }
+body[data-theme="dark"] .vocab-card-delete-cancel {
+  background: #1f2937;
+  border-color: #4b5563;
+  color: #d1d5db;
+}
+body[data-theme="dark"] .vocab-card-delete-cancel:hover {
+  border-color: #6b7280;
+  color: #f3f4f6;
+}
+body[data-theme="dark"] .vocab-card-delete-confirm-btn {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #ffffff;
+}
+body[data-theme="dark"] .vocab-card-delete-confirm-btn:hover {
+  background: #b91c1c;
+  border-color: #b91c1c;
+}
+
 body[data-theme="dark"] .vocab-card-examples {
   border-top-color: #374151;
 }
@@ -2156,6 +2316,11 @@ body[data-theme="dark"] .hub-tab-content::-webkit-scrollbar-thumb:hover {
   body[data-theme="auto"] .vocab-card-meta { color: #6b7280; }
   body[data-theme="auto"] .vocab-card-delete { background: #7f1d1d; border-color: #fca5a5; color: #fca5a5; }
   body[data-theme="auto"] .vocab-card-delete:hover { background: #991b1b; border-color: #f87171; }
+  body[data-theme="auto"] .vocab-card-delete-prompt { color: #9ca3af; }
+  body[data-theme="auto"] .vocab-card-delete-cancel { background: #1f2937; border-color: #4b5563; color: #d1d5db; }
+  body[data-theme="auto"] .vocab-card-delete-cancel:hover { border-color: #6b7280; color: #f3f4f6; }
+  body[data-theme="auto"] .vocab-card-delete-confirm-btn { background: #dc2626; border-color: #dc2626; color: #ffffff; }
+  body[data-theme="auto"] .vocab-card-delete-confirm-btn:hover { background: #b91c1c; border-color: #b91c1c; }
 
   body[data-theme="auto"] .vocab-card-examples { border-top-color: #374151; }
   body[data-theme="auto"] .vocab-card-examples-heading { color: #9ca3af; }
@@ -2388,6 +2553,25 @@ body[data-theme="sepia"] .vocab-card-delete {
 body[data-theme="sepia"] .vocab-card-delete:hover {
   background: #f0c4b4;
   border-color: #a0664f;
+}
+body[data-theme="sepia"] .vocab-card-delete-prompt { color: #8b7355; }
+body[data-theme="sepia"] .vocab-card-delete-cancel {
+  background: #f4ecd8;
+  border-color: #d4c8ab;
+  color: #5c4b37;
+}
+body[data-theme="sepia"] .vocab-card-delete-cancel:hover {
+  border-color: #b8956b;
+  color: #3e2f1f;
+}
+body[data-theme="sepia"] .vocab-card-delete-confirm-btn {
+  background: #b8553d;
+  border-color: #b8553d;
+  color: #fbf5e6;
+}
+body[data-theme="sepia"] .vocab-card-delete-confirm-btn:hover {
+  background: #a04832;
+  border-color: #a04832;
 }
 
 body[data-theme="sepia"] .vocab-card-examples { border-top-color: #d4c8ab; }
