@@ -193,6 +193,10 @@ function shuffleArray<T>(arr: T[]): T[] {
 // ─── Vocab Card Overlay ──────────────────────────────────────────────
 
 function dismissVocabCard(): void {
+  // Stop any in-flight karaoke speech first so the audio doesn't keep
+  // playing after the card is gone (the highlight has nowhere to land
+  // once the overlay is detached).
+  stopKaraoke();
   document.querySelector(".vocab-card-overlay")?.remove();
 }
 
@@ -361,7 +365,17 @@ function renderExampleItem(
 
   const sentenceEl = document.createElement("div");
   sentenceEl.className = "vocab-example-sentence";
-  renderHighlightedSentence(sentenceEl, example.sentence, entry.chars, pinyinStyle);
+  const sentenceSegments = renderHighlightedSentence(
+    sentenceEl,
+    example.sentence,
+    entry.chars,
+    pinyinStyle,
+  );
+
+  // Sentence-level TTS with per-word karaoke highlight, mirroring the
+  // flashcard face. Sits between the sentence and the X so the user
+  // can play audio without tab-targeting the destructive control.
+  const ttsBtn = buildTtsButton(example.sentence, "Play sentence", sentenceSegments);
 
   const xBtn = document.createElement("button");
   xBtn.className = "vocab-example-x";
@@ -378,7 +392,7 @@ function renderExampleItem(
     await refreshVocabCard(entry.chars, els);
   });
 
-  sentenceRow.append(sentenceEl, xBtn);
+  sentenceRow.append(sentenceEl, ttsBtn, xBtn);
   item.appendChild(sentenceRow);
 
   if (example.translation) {
@@ -424,18 +438,53 @@ function renderExamplesSection(
   const examples = entry.examples ?? [];
   if (examples.length === 0) return null;
 
+  // Collapsible section mirroring .vocab-card-chars-section: the heading
+  // doubles as the toggle (label on the left, chevron on the right that
+  // flips 180° when expanded). Items render eagerly into the panel so
+  // the karaoke ruby segments can be wired up at build time, but the
+  // panel is hidden until the user expands the section.
   const section = document.createElement("div");
   section.className = "vocab-card-examples";
 
-  const heading = document.createElement("div");
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "vocab-card-examples-toggle";
+  toggle.setAttribute("aria-expanded", "false");
+
+  const heading = document.createElement("span");
   heading.className = "vocab-card-examples-heading";
   heading.textContent = examples.length === 1 ? "Example" : "Examples";
-  section.appendChild(heading);
+
+  const icon = document.createElement("span");
+  icon.className = "vocab-card-examples-toggle-icon";
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = "˅";
+
+  toggle.append(heading, icon);
+
+  const panel = document.createElement("div");
+  panel.className = "vocab-card-examples-panel";
+  panel.hidden = true;
 
   examples.forEach((ex, i) => {
-    section.appendChild(renderExampleItem(entry, ex, i, els, pinyinStyle));
+    panel.appendChild(renderExampleItem(entry, ex, i, els, pinyinStyle));
   });
 
+  toggle.addEventListener("click", () => {
+    if (panel.hidden) {
+      panel.hidden = false;
+      toggle.setAttribute("aria-expanded", "true");
+    } else {
+      // Collapsing while audio is playing would orphan a highlight on
+      // an off-screen ruby; cancel the karaoke so the next expand starts
+      // clean.
+      stopKaraoke();
+      panel.hidden = true;
+      toggle.setAttribute("aria-expanded", "false");
+    }
+  });
+
+  section.append(toggle, panel);
   return section;
 }
 
@@ -553,9 +602,21 @@ async function showVocabCard(
   closeBtn.textContent = "\u00d7";
   closeBtn.addEventListener("click", dismissVocabCard);
 
+  // Headword row: large chars + a small TTS button so the user can play
+  // the word with one click. Mirrors the flashcard face's fc-chars-row
+  // layout. The button sits inline next to the characters rather than
+  // below them so the visual hierarchy stays "word first".
+  const charsRow = document.createElement("div");
+  charsRow.className = "vocab-card-chars-row";
+
   const chars = document.createElement("div");
   chars.className = "vocab-card-chars";
   chars.textContent = entry.chars;
+
+  const charsTts = buildTtsButton(entry.chars, "Play word");
+  charsTts.classList.add("vocab-card-chars-tts");
+
+  charsRow.append(chars, charsTts);
 
   const pinyin = document.createElement("div");
   pinyin.className = "vocab-card-pinyin";
@@ -771,7 +832,7 @@ async function showVocabCard(
   actions.append(deleteBtn, confirmRow);
   card.append(
     closeBtn,
-    chars,
+    charsRow,
     pinyin,
     def,
     detailsBtn,
@@ -1212,6 +1273,20 @@ function clearKaraokeTimers(): void {
 function clearKaraokeHighlight(): void {
   for (const el of karaokeRubies) el.classList.remove("fc-tts-active");
   karaokeRubies = [];
+}
+
+/**
+ * Hard-stop any in-flight karaoke playback and drop the active class.
+ * Called when the surrounding UI is about to disappear (vocab card
+ * dismissed, examples panel collapsed) so a stale highlight or audible
+ * speech doesn't outlive the element it was painted onto.
+ */
+function stopKaraoke(): void {
+  if (typeof window !== "undefined" && "speechSynthesis" in window) {
+    window.speechSynthesis.cancel();
+  }
+  clearKaraokeTimers();
+  clearKaraokeHighlight();
 }
 
 /**

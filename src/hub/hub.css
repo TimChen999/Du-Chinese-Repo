@@ -709,10 +709,24 @@ button.vocab-bucket-summary-chip.active {
   background: #f3f4f6;
 }
 
+/* Headword row: large characters next to a small TTS speaker. The row
+ * keeps the chars baseline-aligned with the button and reserves the
+ * same bottom margin the chars div had on its own so the rest of the
+ * card layout is unchanged. */
+.vocab-card-chars-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
 .vocab-card-chars {
   font-size: 32px;
   font-weight: 700;
-  margin-bottom: 4px;
+}
+
+.vocab-card-chars-tts {
+  flex: 0 0 auto;
 }
 
 .vocab-card-pinyin {
@@ -1000,13 +1014,37 @@ body[data-theme="sepia"] .vocab-card-details-btn:hover {
    highlighted, an inline X to clear the slot, and either the
    stored translation or a Translate button. */
 
+/* The Examples block mirrors .vocab-card-chars-section: heading is the
+ * toggle row (full-width button, label left, chevron right that flips
+ * on expand), the panel below holds the actual example items. The
+ * panel renders eagerly but is hidden until the user clicks the toggle. */
 .vocab-card-examples {
   margin: 0 0 16px;
   border-top: 1px solid #e5e7eb;
-  padding-top: 12px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+}
+
+.vocab-card-examples-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 12px 0 10px;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  color: #6b7280;
+}
+
+.vocab-card-examples-toggle:hover {
+  color: #4338ca;
+}
+
+.vocab-card-examples-toggle:hover .vocab-card-examples-heading {
+  color: inherit;
 }
 
 .vocab-card-examples-heading {
@@ -1015,6 +1053,27 @@ body[data-theme="sepia"] .vocab-card-details-btn:hover {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: #6b7280;
+}
+
+.vocab-card-examples-toggle-icon {
+  font-size: 12px;
+  line-height: 1;
+  transition: transform 120ms ease;
+}
+
+.vocab-card-examples-toggle[aria-expanded="true"] .vocab-card-examples-toggle-icon {
+  transform: rotate(180deg);
+}
+
+.vocab-card-examples-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 6px;
+}
+
+.vocab-card-examples-panel[hidden] {
+  display: none;
 }
 
 .vocab-example {
@@ -1388,7 +1447,8 @@ body[data-theme="sepia"] .vocab-card-details-btn:hover {
    the flashcard example sentence so the vocab card overlay isn't
    accidentally affected. */
 
-.fc-example-sentence ruby.fc-tts-active {
+.fc-example-sentence ruby.fc-tts-active,
+.vocab-example-sentence ruby.fc-tts-active {
   background-color: rgba(255, 200, 0, 0.45);
   border-radius: 4px;
 }
@@ -1973,6 +2033,12 @@ body[data-theme="dark"] .vocab-card-delete-confirm-btn:hover {
 body[data-theme="dark"] .vocab-card-examples {
   border-top-color: #374151;
 }
+body[data-theme="dark"] .vocab-card-examples-toggle {
+  color: #9ca3af;
+}
+body[data-theme="dark"] .vocab-card-examples-toggle:hover {
+  color: #a5b4fc;
+}
 body[data-theme="dark"] .vocab-card-examples-heading {
   color: #9ca3af;
 }
@@ -2323,6 +2389,8 @@ body[data-theme="dark"] .hub-tab-content::-webkit-scrollbar-thumb:hover {
   body[data-theme="auto"] .vocab-card-delete-confirm-btn:hover { background: #b91c1c; border-color: #b91c1c; }
 
   body[data-theme="auto"] .vocab-card-examples { border-top-color: #374151; }
+  body[data-theme="auto"] .vocab-card-examples-toggle { color: #9ca3af; }
+  body[data-theme="auto"] .vocab-card-examples-toggle:hover { color: #a5b4fc; }
   body[data-theme="auto"] .vocab-card-examples-heading { color: #9ca3af; }
   body[data-theme="auto"] .vocab-example { background: #111827; border-color: #374151; }
   body[data-theme="auto"] .vocab-example-sentence { color: #f3f4f6; }
@@ -2575,6 +2643,8 @@ body[data-theme="sepia"] .vocab-card-delete-confirm-btn:hover {
 }
 
 body[data-theme="sepia"] .vocab-card-examples { border-top-color: #d4c8ab; }
+body[data-theme="sepia"] .vocab-card-examples-toggle { color: #8b7355; }
+body[data-theme="sepia"] .vocab-card-examples-toggle:hover { color: #b8860b; }
 body[data-theme="sepia"] .vocab-card-examples-heading { color: #8b7355; }
 body[data-theme="sepia"] .vocab-example { background: #ede4cf; border-color: #d4c8ab; }
 body[data-theme="sepia"] .vocab-example-sentence { color: #3b2f23; }
