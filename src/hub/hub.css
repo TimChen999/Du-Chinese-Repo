@@ -687,7 +687,41 @@ button.vocab-bucket-summary-chip.active {
   padding: 28px;
   max-width: 360px;
   width: 90%;
+  /* Cap to viewport height so the card never bleeds off-screen on
+   * shorter displays. The scrollable region is the card itself, so
+   * the close button stays accessible by scrolling back to the top
+   * (or via the backdrop click). 32px leaves an even 16px gutter on
+   * top and bottom so the modal doesn't kiss the viewport edges. */
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  /* Firefox: thin track + theme-matched thumb. WebKit equivalents
+   * follow below. Track is transparent so it disappears against the
+   * card background when there's nothing to scroll. */
+  scrollbar-width: thin;
+  scrollbar-color: #d1d5db transparent;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+}
+
+/* WebKit scrollbar styling for the vocab card. Matches the
+ * .hub-tab-content rules: 8px wide, transparent track, indigo thumb on
+ * hover so it ties back to the rest of the hub palette. The vertical
+ * margin keeps the thumb from touching the card's rounded corners. */
+.vocab-card::-webkit-scrollbar {
+  width: 8px;
+}
+
+.vocab-card::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 12px 0;
+}
+
+.vocab-card::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
+}
+
+.vocab-card::-webkit-scrollbar-thumb:hover {
+  background: #3b82f6;
 }
 
 .vocab-card-close {
@@ -1972,6 +2006,15 @@ body[data-theme="dark"] .vocab-card-due-note {
 body[data-theme="dark"] .vocab-card {
   background: #1f2937;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  scrollbar-color: #4b5563 transparent;
+}
+
+body[data-theme="dark"] .vocab-card::-webkit-scrollbar-thumb {
+  background: #4b5563;
+}
+
+body[data-theme="dark"] .vocab-card::-webkit-scrollbar-thumb:hover {
+  background: #818cf8;
 }
 
 body[data-theme="dark"] .vocab-card-close {
@@ -2373,7 +2416,9 @@ body[data-theme="dark"] .hub-tab-content::-webkit-scrollbar-thumb:hover {
   body[data-theme="auto"] .vocab-bucket-not-reviewed { background: #374151; color: #d1d5db; }
   body[data-theme="auto"] .vocab-card-due-note { color: #9ca3af; }
 
-  body[data-theme="auto"] .vocab-card { background: #1f2937; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+  body[data-theme="auto"] .vocab-card { background: #1f2937; box-shadow: 0 8px 32px rgba(0,0,0,0.4); scrollbar-color: #4b5563 transparent; }
+  body[data-theme="auto"] .vocab-card::-webkit-scrollbar-thumb { background: #4b5563; }
+  body[data-theme="auto"] .vocab-card::-webkit-scrollbar-thumb:hover { background: #818cf8; }
   body[data-theme="auto"] .vocab-card-close { color: #6b7280; }
   body[data-theme="auto"] .vocab-card-close:hover { color: #d1d5db; background: #374151; }
   body[data-theme="auto"] .vocab-card-chars { color: #f3f4f6; }
@@ -2606,7 +2651,10 @@ body[data-theme="sepia"] .vocab-card-due-note { color: #8b7355; }
 body[data-theme="sepia"] .vocab-card {
   background: #f4ecd8;
   box-shadow: 0 8px 32px rgba(92, 75, 55, 0.25);
+  scrollbar-color: #d4c8ab transparent;
 }
+body[data-theme="sepia"] .vocab-card::-webkit-scrollbar-thumb { background: #d4c8ab; }
+body[data-theme="sepia"] .vocab-card::-webkit-scrollbar-thumb:hover { background: #b8860b; }
 body[data-theme="sepia"] .vocab-card-close { color: #8b7355; }
 body[data-theme="sepia"] .vocab-card-close:hover { color: #5c4b37; background: #ede4cf; }
 body[data-theme="sepia"] .vocab-card-chars { color: #5c4b37; }
