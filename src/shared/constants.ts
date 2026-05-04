@@ -205,6 +205,16 @@ export const CEDICT_DICT_PATH = "dict/cedict_ts.u8";
  */
 export const COMPONENTS_DICT_PATH = "dict/components.tsv";
 
+// ─── Phonetic component index (build-time derived) ────────────────
+/**
+ * JSON file produced by scripts/build-phonetics.mjs. Each key is a
+ * Han component (e.g. "青") and the value lists the characters where
+ * that component plays the phonetic role, grouped by sound-similarity
+ * bucket. Used by the Hub's "Families" tab. See shared/phonetics-lookup.ts
+ * for the consumer shape.
+ */
+export const PHONETICS_DICT_PATH = "dict/phonetics.json";
+
 /**
  * Maximum number of characters from the caret position passed to
  * findLongest(). Mirrors Zhongwen's 30-char cap. Larger means the

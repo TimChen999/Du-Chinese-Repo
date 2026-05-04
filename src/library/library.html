@@ -17,6 +17,7 @@
       <button class="library-tab active" data-library-tab="reader">Reader</button>
       <button class="library-tab" data-library-tab="vocab">Vocab</button>
       <button class="library-tab" data-library-tab="flashcards">Flashcards</button>
+      <button class="library-tab" data-library-tab="families">Families</button>
     </nav>
   </header>
 
@@ -299,6 +300,74 @@
             <button id="fc-review-wrong" class="fc-review-wrong-btn hidden">Review missed</button>
             <button id="fc-again" class="fc-again-btn">Practice Again</button>
             <button id="fc-back" class="fc-back-btn">Back to List</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Families pane ────────────────────────────────────────── -->
+    <section id="library-pane-families" class="library-pane hidden">
+      <div id="tab-families" class="hub-tab-content">
+
+        <!-- List view: sub-tabs + family rows -->
+        <div id="fm-list" class="fm-list">
+          <div class="fm-controls">
+            <div class="fm-subtabs" role="tablist" aria-label="Family views">
+              <button class="fm-subtab active" data-fm-view="in-progress" role="tab" aria-selected="true">In progress</button>
+              <button class="fm-subtab" data-fm-view="all" role="tab" aria-selected="false">All</button>
+              <button class="fm-subtab" data-fm-view="mastered" role="tab" aria-selected="false">Mastered</button>
+            </div>
+            <p id="fm-view-hint" class="fm-view-hint"></p>
+          </div>
+          <div id="fm-rows" class="fm-rows" aria-live="polite"></div>
+        </div>
+
+        <!-- Single-family detail view (hidden until a row is opened) -->
+        <div id="fm-detail" class="fm-detail hidden">
+          <div class="fm-detail-header">
+            <button id="fm-back" class="fm-back-btn" aria-label="Back to families list">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+              <span>Back</span>
+            </button>
+            <div class="fm-detail-title">
+              <span id="fm-detail-glyph" class="fm-detail-glyph"></span>
+              <div class="fm-detail-title-meta">
+                <span id="fm-detail-pinyin" class="fm-detail-pinyin"></span>
+                <span id="fm-detail-coverage" class="fm-detail-coverage"></span>
+              </div>
+            </div>
+            <button id="fm-study" class="fm-study-btn" hidden>Study</button>
+          </div>
+          <p id="fm-reliability" class="fm-reliability"></p>
+          <div id="fm-members" class="fm-members"></div>
+          <div id="fm-actions" class="fm-actions"></div>
+        </div>
+
+        <!-- Study-session view (hidden until "Study" pressed) -->
+        <div id="fm-study-session" class="fm-study-session hidden">
+          <div class="fm-study-header">
+            <button id="fm-study-close" class="fm-study-close-btn" aria-label="End session">&times;</button>
+            <span id="fm-study-progress" class="fm-study-progress">1 / 1</span>
+            <span id="fm-study-comp" class="fm-study-comp"></span>
+          </div>
+          <div class="fm-study-card">
+            <div id="fm-study-char" class="fm-study-char"></div>
+            <div id="fm-study-pinyin" class="fm-study-pinyin"></div>
+            <div id="fm-study-def" class="fm-study-def"></div>
+            <div id="fm-study-relation" class="fm-study-relation"></div>
+          </div>
+          <div class="fm-study-actions">
+            <button id="fm-study-need" class="fm-study-need-btn">Need practice</button>
+            <button id="fm-study-got" class="fm-study-got-btn">Got it</button>
+          </div>
+        </div>
+
+        <!-- Study-session summary -->
+        <div id="fm-study-summary" class="fm-study-summary hidden">
+          <h2>Family complete</h2>
+          <p id="fm-study-summary-text" class="fm-study-summary-text"></p>
+          <div class="fm-study-summary-actions">
+            <button id="fm-study-summary-back" class="fm-study-summary-back-btn">Back to families</button>
           </div>
         </div>
       </div>

@@ -14,7 +14,11 @@ import {
   MAX_VOCAB_EXAMPLES,
   VOCAB_STOP_WORDS,
 } from "../shared/constants";
-import { applyReviewResult } from "../shared/srs";
+import {
+  applyReviewResult,
+  MS_PER_DAY,
+  SRS_CONFIDENT_INTERVAL_DAYS,
+} from "../shared/srs";
 
 const STORAGE_KEY = "vocabStore";
 
@@ -117,6 +121,68 @@ export async function recordWords(
       }
       store[word.chars] = entry;
     }
+  }
+
+  const keys = Object.keys(store);
+  if (keys.length > MAX_VOCAB_ENTRIES) {
+    const sorted = keys.sort((a, b) => store[a].count - store[b].count);
+    const excess = keys.length - MAX_VOCAB_ENTRIES;
+    for (let i = 0; i < excess; i++) {
+      delete store[sorted[i]];
+    }
+  }
+
+  await chrome.storage.local.set({ [STORAGE_KEY]: store });
+}
+
+/**
+ * Records a single word and immediately graduates it to the
+ * "confident" SRS bucket. Used by the Families study flow when the
+ * user taps "Got it" on a family member they already know -- the
+ * intent is "skip past the early-stage SRS reviews", not "stage a
+ * fresh review tomorrow."
+ *
+ * If the entry already exists, only the SRS fields are updated (its
+ * stored example sentences and timestamps are preserved).
+ *
+ * The interval is set to SRS_CONFIDENT_INTERVAL_DAYS so the bucket
+ * classifier in shared/srs.ts immediately reports "confident" without
+ * any special-casing on its end.
+ */
+export async function markWordConfident(
+  word: { chars: string; pinyin: string; definition: string },
+): Promise<void> {
+  if (!word.chars || VOCAB_STOP_WORDS.has(word.chars)) return;
+
+  const result = await chrome.storage.local.get(STORAGE_KEY);
+  const store: VocabRecord =
+    (result[STORAGE_KEY] as VocabRecord | undefined) ?? {};
+  const now = Date.now();
+
+  const existing = store[word.chars];
+  if (existing) {
+    existing.lastSeen = now;
+    existing.pinyin = word.pinyin;
+    existing.definition = word.definition;
+    existing.intervalDays = SRS_CONFIDENT_INTERVAL_DAYS;
+    existing.nextDueAt = now + SRS_CONFIDENT_INTERVAL_DAYS * MS_PER_DAY;
+    existing.wrongStreak = 0;
+    existing.totalReviews = Math.max(existing.totalReviews ?? 0, 1);
+    existing.totalCorrect = Math.max(existing.totalCorrect ?? 0, 1);
+  } else {
+    store[word.chars] = {
+      chars: word.chars,
+      pinyin: word.pinyin,
+      definition: word.definition,
+      count: 1,
+      firstSeen: now,
+      lastSeen: now,
+      wrongStreak: 0,
+      totalReviews: 1,
+      totalCorrect: 1,
+      intervalDays: SRS_CONFIDENT_INTERVAL_DAYS,
+      nextDueAt: now + SRS_CONFIDENT_INTERVAL_DAYS * MS_PER_DAY,
+    };
   }
 
   const keys = Object.keys(store);

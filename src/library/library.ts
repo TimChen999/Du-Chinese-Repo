@@ -21,12 +21,18 @@ import {
   migrateThemeIfNeeded,
 } from "../reader/reader";
 import { initHub, refreshVocabView, refreshFlashcardsView } from "../hub/hub";
+import { initFamilies, refreshFamiliesView } from "../hub/families";
 import { resolveEffectiveTheme } from "../shared/theme";
 import type { ReaderSettings } from "../reader/reader-types";
 
-type LibraryTab = "reader" | "vocab" | "flashcards";
+type LibraryTab = "reader" | "vocab" | "flashcards" | "families";
 
-const VALID_TABS: ReadonlySet<LibraryTab> = new Set(["reader", "vocab", "flashcards"]);
+const VALID_TABS: ReadonlySet<LibraryTab> = new Set([
+  "reader",
+  "vocab",
+  "flashcards",
+  "families",
+]);
 
 /**
  * Tracks the previously active library tab so activateLibraryTab can
@@ -91,6 +97,8 @@ export function activateLibraryTab(tab: LibraryTab): void {
     void refreshVocabView();
   } else if (tab === "flashcards") {
     void refreshFlashcardsView();
+  } else if (tab === "families") {
+    void refreshFamiliesView();
   } else if (tab === "reader" && !wasReader && activeLibraryTab !== null) {
     // Re-assert the reader's position after epub.js's resize handler
     // has had a chance to settle. restoreReaderPosition waits two
@@ -125,6 +133,23 @@ function setupCrossTabBridges(): void {
   const fcBack = document.getElementById("fc-back");
   fcBack?.addEventListener("click", () => {
     activateLibraryTab("vocab");
+  });
+
+  // The Vocab tab's char detail card emits this event when the user
+  // clicks the phonetic-family link. We just flip the active tab here;
+  // hub/families.ts dispatches its own openFamilyDetail() right after
+  // so the family detail panel is already open by the time the pane
+  // becomes visible.
+  window.addEventListener("library:switch-tab", (e) => {
+    const target = (e as CustomEvent<string>).detail;
+    if (
+      target === "reader" ||
+      target === "vocab" ||
+      target === "flashcards" ||
+      target === "families"
+    ) {
+      activateLibraryTab(target);
+    }
   });
 }
 
@@ -196,6 +221,7 @@ export async function initLibrary(): Promise<void> {
   await migrateThemeIfNeeded();
   await initReader();
   await initHub();
+  initFamilies();
   setupLibraryTabs();
   setupCrossTabBridges();
   await applyCanonicalTheme();

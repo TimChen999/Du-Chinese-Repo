@@ -35,6 +35,13 @@ import {
   lookupComponents,
 } from "../shared/components-lookup";
 import {
+  ensurePhoneticsLoaded,
+  familiesContaining,
+  isPhoneticsReady,
+  lookupFamily,
+} from "../shared/phonetics-lookup";
+import { openFamilyDetail } from "./families";
+import {
   applyReviewResult,
   bucketLabel,
   getVocabBucket,
@@ -964,6 +971,84 @@ async function showVocabCard(
       });
   }
 
+  // Phonetic-family cross-link (single-char headwords only). Mirrors
+  // the equivalent block in showCharDetailCard so a saved single-char
+  // entry exposes the same path into the Families tab the drill-down
+  // does.
+  const familySection = document.createElement("div");
+  familySection.className = "vocab-card-family-section";
+  familySection.hidden = true;
+
+  function refreshFamilyAffordance(): void {
+    while (familySection.firstChild) familySection.removeChild(familySection.firstChild);
+    if (Array.from(entry.chars).length !== 1) {
+      familySection.hidden = true;
+      return;
+    }
+    if (!isPhoneticsReady()) {
+      familySection.hidden = true;
+      return;
+    }
+    const comps = familiesContaining(entry.chars);
+    if (comps.length === 0) {
+      familySection.hidden = true;
+      return;
+    }
+    familySection.hidden = false;
+
+    const heading = document.createElement("div");
+    heading.className = "vocab-card-family-heading";
+    heading.textContent = comps.length === 1 ? "Phonetic family" : "Phonetic families";
+    familySection.appendChild(heading);
+
+    for (const comp of comps) {
+      const fam = lookupFamily(comp);
+      if (!fam) continue;
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "vocab-card-family-link";
+      item.addEventListener("click", () => {
+        dismissVocabCard();
+        window.dispatchEvent(
+          new CustomEvent("library:switch-tab", { detail: "families" }),
+        );
+        void openFamilyDetail(comp);
+      });
+
+      const compGlyph = document.createElement("span");
+      compGlyph.className = "vocab-card-family-comp";
+      compGlyph.textContent = comp;
+
+      const compLabel = document.createElement("span");
+      compLabel.className = "vocab-card-family-comp-label";
+      compLabel.textContent = formatPinyin(fam.reading, "toneMarks");
+
+      const sizeNote = document.createElement("span");
+      sizeNote.className = "vocab-card-family-size";
+      sizeNote.textContent = `${fam.members.length} chars`;
+
+      const arrow = document.createElement("span");
+      arrow.className = "vocab-card-family-arrow";
+      arrow.setAttribute("aria-hidden", "true");
+      arrow.textContent = "›";
+
+      item.append(compGlyph, compLabel, sizeNote, arrow);
+      familySection.appendChild(item);
+    }
+  }
+  refreshFamilyAffordance();
+
+  if (!isPhoneticsReady()) {
+    void ensurePhoneticsLoaded()
+      .then(() => {
+        if (!document.body.contains(card)) return;
+        refreshFamilyAffordance();
+      })
+      .catch((err) => {
+        console.warn("[hub] phonetics index failed to load", err);
+      });
+  }
+
   const bucketRow = document.createElement("div");
   bucketRow.className = "vocab-card-bucket";
   bucketRow.appendChild(renderBucketPill(getVocabBucket(entry)));
@@ -1049,6 +1134,7 @@ async function showVocabCard(
     meta,
     charsSection,
     componentsSection,
+    familySection,
     actions,
   );
 
@@ -1289,6 +1375,81 @@ function showCharDetailCard(
       });
   }
 
+  // Phonetic-family cross-link: when the character is a member of a
+  // phonetic family, surface the component + a quick coverage line and
+  // a button that switches to the Families tab and opens that family.
+  // Hidden when the index isn't loaded or the char has no family.
+  const familySection = document.createElement("div");
+  familySection.className = "vocab-card-family-section";
+  familySection.hidden = true;
+
+  function refreshFamilyAffordance(): void {
+    while (familySection.firstChild) familySection.removeChild(familySection.firstChild);
+    if (!isPhoneticsReady()) {
+      familySection.hidden = true;
+      return;
+    }
+    const comps = familiesContaining(ch);
+    if (comps.length === 0) {
+      familySection.hidden = true;
+      return;
+    }
+    familySection.hidden = false;
+
+    const heading = document.createElement("div");
+    heading.className = "vocab-card-family-heading";
+    heading.textContent = comps.length === 1 ? "Phonetic family" : "Phonetic families";
+    familySection.appendChild(heading);
+
+    for (const comp of comps) {
+      const fam = lookupFamily(comp);
+      if (!fam) continue;
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "vocab-card-family-link";
+      item.addEventListener("click", () => {
+        dismissVocabCard();
+        const evt = new CustomEvent("library:switch-tab", {
+          detail: "families",
+        });
+        window.dispatchEvent(evt);
+        void openFamilyDetail(comp);
+      });
+
+      const compGlyph = document.createElement("span");
+      compGlyph.className = "vocab-card-family-comp";
+      compGlyph.textContent = comp;
+
+      const compLabel = document.createElement("span");
+      compLabel.className = "vocab-card-family-comp-label";
+      compLabel.textContent = formatPinyin(fam.reading, "toneMarks");
+
+      const sizeNote = document.createElement("span");
+      sizeNote.className = "vocab-card-family-size";
+      sizeNote.textContent = `${fam.members.length} chars`;
+
+      const arrow = document.createElement("span");
+      arrow.className = "vocab-card-family-arrow";
+      arrow.setAttribute("aria-hidden", "true");
+      arrow.textContent = "›";
+
+      item.append(compGlyph, compLabel, sizeNote, arrow);
+      familySection.appendChild(item);
+    }
+  }
+  refreshFamilyAffordance();
+
+  if (!isPhoneticsReady()) {
+    void ensurePhoneticsLoaded()
+      .then(() => {
+        if (!document.body.contains(card)) return;
+        refreshFamilyAffordance();
+      })
+      .catch((err) => {
+        console.warn("[hub] phonetics index failed to load", err);
+      });
+  }
+
   card.append(
     backBtn,
     closeBtn,
@@ -1298,6 +1459,7 @@ function showCharDetailCard(
     detailsBtn,
     details,
     componentsSection,
+    familySection,
   );
 
   overlay.appendChild(card);

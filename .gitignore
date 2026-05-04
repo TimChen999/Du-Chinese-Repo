@@ -50,3 +50,6 @@ public/dict/cedict_ts.u8
 
 # Make Me a Hanzi components data downloaded by scripts/download-makemeahanzi.mjs
 public/dict/components.tsv
+
+# Phonetic-component family index built by scripts/build-phonetics.mjs
+public/dict/phonetics.json
