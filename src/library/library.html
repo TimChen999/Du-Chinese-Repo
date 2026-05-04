@@ -317,6 +317,21 @@
               <button class="fm-subtab" data-fm-view="all" role="tab" aria-selected="false">All</button>
               <button class="fm-subtab" data-fm-view="mastered" role="tab" aria-selected="false">Mastered</button>
             </div>
+            <div class="fm-toolbar">
+              <select id="fm-sort" class="fm-sort" aria-label="Sort families by">
+                <option value="leverage">Closest to consolidating</option>
+                <option value="mastered">Most mastered</option>
+                <option value="size">Largest family</option>
+                <option value="reliability">Most reliable</option>
+                <option value="frequency">Most common members</option>
+                <option value="alpha">Alphabetical (component)</option>
+              </select>
+              <div class="fm-search">
+                <svg class="fm-search-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="search" id="fm-search-input" class="fm-search-input" placeholder="Search component, pinyin, member char&hellip;" autocomplete="off" spellcheck="false" />
+                <button type="button" id="fm-search-clear" class="fm-search-clear hidden" aria-label="Clear search" title="Clear search">&times;</button>
+              </div>
+            </div>
             <p id="fm-view-hint" class="fm-view-hint"></p>
           </div>
           <div id="fm-rows" class="fm-rows" aria-live="polite"></div>
@@ -357,8 +372,8 @@
             <div id="fm-study-relation" class="fm-study-relation"></div>
           </div>
           <div class="fm-study-actions">
-            <button id="fm-study-need" class="fm-study-need-btn">Need practice</button>
-            <button id="fm-study-got" class="fm-study-got-btn">Got it</button>
+            <button id="fm-study-need" class="fm-study-need-btn">Review soon</button>
+            <button id="fm-study-got" class="fm-study-got-btn">Got it &middot; review tomorrow</button>
           </div>
         </div>
 

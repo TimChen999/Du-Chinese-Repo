@@ -8,14 +8,12 @@ import {
   setExampleTranslation,
   updateFlashcardResult,
   importVocab,
-  markWordConfident,
 } from "../../src/background/vocab-store";
 import {
   MAX_VOCAB_ENTRIES,
   MAX_VOCAB_EXAMPLES,
   VOCAB_STOP_WORDS,
 } from "../../src/shared/constants";
-import { getVocabBucket, SRS_CONFIDENT_INTERVAL_DAYS } from "../../src/shared/srs";
 import type { VocabEntry, VocabExample } from "../../src/shared/types";
 import { mock } from "../test-helpers";
 
@@ -345,63 +343,6 @@ describe("vocab-store", () => {
       const after = (await getAllVocab()).find((v) => v.chars === "银行")!;
       expect(after.intervalDays).toBe(0);
       expect(after.nextDueAt).toBeLessThanOrEqual(Date.now());
-    });
-  });
-
-  describe("markWordConfident", () => {
-    it("creates a fresh entry pre-graduated to the confident bucket", async () => {
-      await markWordConfident({
-        chars: "清",
-        pinyin: "qīng",
-        definition: "clear",
-      });
-
-      const all = await getAllVocab();
-      expect(all).toHaveLength(1);
-      const entry = all[0];
-      expect(entry.chars).toBe("清");
-      expect(entry.intervalDays).toBe(SRS_CONFIDENT_INTERVAL_DAYS);
-      expect(entry.totalReviews).toBe(1);
-      expect(entry.totalCorrect).toBe(1);
-      expect(entry.wrongStreak).toBe(0);
-      expect(getVocabBucket(entry)).toBe("confident");
-    });
-
-    it("promotes an existing entry without resetting count or examples", async () => {
-      await recordWords([{ chars: "清", pinyin: "qīng", definition: "clear" }], {
-        sentence: "天气很清",
-        capturedAt: Date.now(),
-      });
-      // bump count further so we can detect a reset
-      await recordWords([{ chars: "清", pinyin: "qīng", definition: "clear" }]);
-
-      const before = (await getAllVocab()).find((e) => e.chars === "清")!;
-      expect(before.count).toBe(2);
-      expect(before.examples?.length).toBe(1);
-      expect(getVocabBucket(before)).toBe("not-reviewed");
-
-      await markWordConfident({
-        chars: "清",
-        pinyin: "qīng",
-        definition: "clear, pure",
-      });
-
-      const after = (await getAllVocab()).find((e) => e.chars === "清")!;
-      expect(after.count).toBe(2);
-      expect(after.examples?.length).toBe(1);
-      expect(after.definition).toBe("clear, pure");
-      expect(getVocabBucket(after)).toBe("confident");
-    });
-
-    it("ignores stop words", async () => {
-      const stopWord = Array.from(VOCAB_STOP_WORDS)[0];
-      await markWordConfident({
-        chars: stopWord,
-        pinyin: "x",
-        definition: "y",
-      });
-      const all = await getAllVocab();
-      expect(all.find((e) => e.chars === stopWord)).toBeUndefined();
     });
   });
 

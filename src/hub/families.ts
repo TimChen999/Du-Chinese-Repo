@@ -12,10 +12,18 @@
  * (exact > tone > initial-shift > final-shift). Each row carries the
  * user's per-character SRS bucket inline.
  *
- * Study session: focused walk through the family's untouched members
- * (or all members on demand). "Got it" promotes a char to confident
- * directly; "Need practice" creates a fresh entry in the daily review
- * queue. Both write to the same vocab-store the Vocab tab reads.
+ * Study session: focused walk through the family's untouched members.
+ * Both buttons write into the same SRS pipeline as the regular
+ * flashcard tab so a single "Got it" can't bypass spaced retrieval --
+ * the family card is the *introduction*, not the consolidation.
+ *   "Got it"        — creates a fresh vocab entry and applies one
+ *                     correct review (interval = 1 day, bucket =
+ *                     needs-improvement). The daily flashcard queue
+ *                     then picks it up and advances it to confident
+ *                     over the normal ~1 + 2 + 4 + 7 day spacing.
+ *   "Need practice" — creates a fresh vocab entry with no review
+ *                     applied (bucket = not-reviewed, due now), so the
+ *                     next flashcard session surfaces it immediately.
  *
  * State sources (no separate database):
  *   - vocab-store    — confidence/bucket per char
@@ -23,7 +31,11 @@
  *   - cedict-lookup    — pinyin / gloss / pinyin formatting
  */
 
-import { getAllVocab, markWordConfident, recordWords } from "../background/vocab-store";
+import {
+  getAllVocab,
+  recordWords,
+  updateFlashcardResult,
+} from "../background/vocab-store";
 import {
   ensureDictionaryLoaded,
   formatPinyin,
@@ -123,7 +135,23 @@ function buildFamilyState(comp: string, family: PhoneticFamily): FamilyState {
 
 type FamilyView = "in-progress" | "all" | "mastered";
 
+/**
+ * Six sort modes that line up with the dropdown in library.html. The
+ * default depends on the active view -- "leverage" only really makes
+ * sense for in-progress, so the renderer falls back to a sensible
+ * per-view default when the user hasn't picked a sort yet.
+ */
+type FamilySort =
+  | "leverage"
+  | "mastered"
+  | "size"
+  | "reliability"
+  | "frequency"
+  | "alpha";
+
 let currentView: FamilyView = "in-progress";
+let currentSort: FamilySort = "leverage";
+let searchQuery = "";
 
 function eligibleForView(s: FamilyState, view: FamilyView): boolean {
   switch (view) {
@@ -138,27 +166,122 @@ function eligibleForView(s: FamilyState, view: FamilyView): boolean {
   }
 }
 
-function compareForList(a: FamilyState, b: FamilyState, view: FamilyView): number {
-  if (view === "in-progress") {
-    // Closest to consolidating first: fewer untouched, then more engaged
-    // (more warm context to leverage).
-    if (a.untouchedCount !== b.untouchedCount)
-      return a.untouchedCount - b.untouchedCount;
-    if (a.engagedCount !== b.engagedCount)
-      return b.engagedCount - a.engagedCount;
-  } else if (view === "mastered") {
-    // Bigger families first as a small reward signal.
-    if (a.members.length !== b.members.length)
-      return b.members.length - a.members.length;
-  } else {
-    // All view: most reliable, biggest first -- gives a sensible
-    // browse order before any user state exists.
-    if (a.family.reliability !== b.family.reliability)
-      return b.family.reliability - a.family.reliability;
-    if (a.members.length !== b.members.length)
-      return b.members.length - a.members.length;
+/**
+ * Sum of compound-frequency proxies across all members. Bigger value
+ * means the family contains more high-coverage characters, i.e. it
+ * pays more rent in everyday Chinese. Cached on the FamilyState since
+ * computing it is O(members).
+ */
+const totalFreqCache = new WeakMap<FamilyState, number>();
+function totalFreq(s: FamilyState): number {
+  let cached = totalFreqCache.get(s);
+  if (cached === undefined) {
+    cached = 0;
+    for (const m of s.members) cached += m.freq;
+    totalFreqCache.set(s, cached);
+  }
+  return cached;
+}
+
+/**
+ * Per-view default sort. Used when the user opens a sub-tab without
+ * changing the dropdown; "leverage" only makes sense in-progress, and
+ * "mastered" is meaningless when nothing is mastered yet, so each tab
+ * falls back to whatever produces the most useful first row.
+ */
+function defaultSortFor(view: FamilyView): FamilySort {
+  if (view === "in-progress") return "leverage";
+  if (view === "mastered") return "size";
+  return "reliability";
+}
+
+function compareForList(
+  a: FamilyState,
+  b: FamilyState,
+  sort: FamilySort,
+): number {
+  switch (sort) {
+    case "leverage": {
+      // Closest to consolidating first: fewer untouched, then more
+      // engaged (more warm context to leverage).
+      if (a.untouchedCount !== b.untouchedCount)
+        return a.untouchedCount - b.untouchedCount;
+      if (a.engagedCount !== b.engagedCount)
+        return b.engagedCount - a.engagedCount;
+      break;
+    }
+    case "mastered": {
+      // Most confident members in absolute count; ties broken by
+      // proportion so smaller-but-fully-known families don't get
+      // buried behind half-known big ones.
+      if (a.confidentCount !== b.confidentCount)
+        return b.confidentCount - a.confidentCount;
+      const propA = a.confidentCount / Math.max(1, a.members.length);
+      const propB = b.confidentCount / Math.max(1, b.members.length);
+      if (propA !== propB) return propB - propA;
+      break;
+    }
+    case "size":
+      if (a.members.length !== b.members.length)
+        return b.members.length - a.members.length;
+      break;
+    case "reliability":
+      if (a.family.reliability !== b.family.reliability)
+        return b.family.reliability - a.family.reliability;
+      // Stable tiebreaker: bigger families ahead of small noise.
+      if (a.members.length !== b.members.length)
+        return b.members.length - a.members.length;
+      break;
+    case "frequency":
+      // Sum of CEDICT compound counts across members -- a proxy for
+      // how often the family's characters appear in everyday text.
+      if (totalFreq(a) !== totalFreq(b)) return totalFreq(b) - totalFreq(a);
+      break;
+    case "alpha":
+      // Falls through to the comp tiebreaker below.
+      break;
   }
   return a.comp.localeCompare(b.comp);
+}
+
+// ─── Search ──────────────────────────────────────────────────────────
+
+/**
+ * Strips combining tone marks and lowercases so a query like "qing"
+ * matches stored "Qīng". Mirrors the vocab list's normalizer in
+ * hub.ts (kept separate to avoid a cross-module import for one fn).
+ */
+function normalizeForSearch(s: string): string {
+  return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+}
+
+/**
+ * Matches the search query against the family's component, the
+ * component's reading (raw and tone-formatted), and every member
+ * char + reading. Empty query short-circuits to true.
+ */
+function matchesSearch(s: FamilyState, query: string): boolean {
+  if (!query) return true;
+  const needle = normalizeForSearch(query);
+  if (!needle) return true;
+
+  if (s.comp.includes(query)) return true;
+
+  const compReadingNumeric = normalizeForSearch(s.family.reading);
+  if (compReadingNumeric.includes(needle)) return true;
+  const compReadingTones = normalizeForSearch(
+    formatPinyin(s.family.reading, "toneMarks"),
+  );
+  if (compReadingTones.includes(needle)) return true;
+
+  for (const m of s.members) {
+    if (m.char.includes(query)) return true;
+    const memberNumeric = normalizeForSearch(m.pinyin);
+    if (memberNumeric.includes(needle)) return true;
+    const memberTones = normalizeForSearch(formatPinyin(m.pinyin, "toneMarks"));
+    if (memberTones.includes(needle)) return true;
+  }
+  return false;
 }
 
 // ─── DOM lookup ──────────────────────────────────────────────────────
@@ -169,6 +292,9 @@ function getEls() {
     rows: document.getElementById("fm-rows") as HTMLDivElement | null,
     viewHint: document.getElementById("fm-view-hint") as HTMLParagraphElement | null,
     subtabs: document.querySelectorAll<HTMLButtonElement>(".fm-subtab"),
+    sort: document.getElementById("fm-sort") as HTMLSelectElement | null,
+    searchInput: document.getElementById("fm-search-input") as HTMLInputElement | null,
+    searchClear: document.getElementById("fm-search-clear") as HTMLButtonElement | null,
     detail: document.getElementById("fm-detail") as HTMLDivElement | null,
     detailGlyph: document.getElementById("fm-detail-glyph") as HTMLSpanElement | null,
     detailPinyin: document.getElementById("fm-detail-pinyin") as HTMLSpanElement | null,
@@ -228,17 +354,22 @@ function renderList(): void {
   const states = allFamilies()
     .map(([comp, fam]) => buildFamilyState(comp, fam))
     .filter((s) => eligibleForView(s, currentView))
-    .sort((a, b) => compareForList(a, b, currentView));
+    .filter((s) => matchesSearch(s, searchQuery))
+    .sort((a, b) => compareForList(a, b, currentSort));
 
   if (states.length === 0) {
     const empty = document.createElement("p");
     empty.className = "fm-empty";
-    empty.textContent =
-      currentView === "in-progress"
-        ? "No families in progress yet. Save a few characters to your vocab list and they will surface here."
-        : currentView === "mastered"
-          ? "No mastered families yet. Mark every member of a family confident to see it here."
-          : "No families to show.";
+    if (searchQuery) {
+      empty.textContent = `No families match "${searchQuery}".`;
+    } else {
+      empty.textContent =
+        currentView === "in-progress"
+          ? "No families in progress yet. Save a few characters to your vocab list and they will surface here."
+          : currentView === "mastered"
+            ? "No mastered families yet. Move every member of a family to confident to see it here."
+            : "No families to show.";
+    }
     els.rows.appendChild(empty);
     return;
   }
@@ -560,14 +691,17 @@ async function answerCard(action: "got" | "need"): Promise<void> {
   const card = session.queue[session.index];
   if (!card) return;
 
+  // Both branches first ensure a vocab entry exists at the not-reviewed
+  // baseline. Family study only enqueues untouched members, so this is
+  // always a clean insert (recordWords increments count on existing
+  // entries; for untouched it doesn't).
   const word = wordDataFor(card.char, card.pinyin);
+  await recordWords([word]);
   if (action === "got") {
-    await markWordConfident(word);
-  } else {
-    // "Need practice" — record as fresh entry in the queue (not-reviewed
-    // bucket). recordWords increments count if it already exists; for
-    // untouched members it doesn't, so this is a clean insert.
-    await recordWords([word]);
+    // One correct review -- advances to needs-improvement (interval = 1
+    // day). The daily flashcard queue then progresses it to confident
+    // over the same SRS schedule everything else uses.
+    await updateFlashcardResult(card.char, true);
   }
 
   session.index++;
@@ -645,9 +779,48 @@ export function initFamilies(): void {
       const v = b.dataset.fmView as FamilyView | undefined;
       if (v === "in-progress" || v === "all" || v === "mastered") {
         currentView = v;
+        // Pull the dropdown back to the per-view default whenever the
+        // user hops sub-tabs -- "leverage" is meaningless on Mastered,
+        // and "mastered" is meaningless on In-progress, so silently
+        // redirect to whatever produces the most useful first row.
+        currentSort = defaultSortFor(v);
+        if (els.sort) els.sort.value = currentSort;
         renderList();
       }
     });
+  });
+
+  els.sort?.addEventListener("change", () => {
+    if (!els.sort) return;
+    const v = els.sort.value as FamilySort;
+    if (
+      v === "leverage" ||
+      v === "mastered" ||
+      v === "size" ||
+      v === "reliability" ||
+      v === "frequency" ||
+      v === "alpha"
+    ) {
+      currentSort = v;
+      renderList();
+    }
+  });
+
+  els.searchInput?.addEventListener("input", () => {
+    searchQuery = els.searchInput?.value.trim() ?? "";
+    if (els.searchClear) {
+      els.searchClear.classList.toggle("hidden", searchQuery.length === 0);
+    }
+    renderList();
+  });
+
+  els.searchClear?.addEventListener("click", () => {
+    if (!els.searchInput) return;
+    els.searchInput.value = "";
+    searchQuery = "";
+    els.searchClear?.classList.add("hidden");
+    els.searchInput.focus();
+    renderList();
   });
 
   els.back?.addEventListener("click", () => closeDetail());
