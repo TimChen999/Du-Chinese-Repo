@@ -657,6 +657,29 @@ function readingFor(char: string): string | null {
 }
 
 /**
+ * True when `char` is a traditional-only form whose simplified
+ * counterpart exists as a different character (e.g. 韻 → 韵, 應 → 应,
+ * 聽 → 听). Used to keep traditional duplicates out of the
+ * decomposition-only section: a simplified-Chinese reader would see
+ * 韻 right next to 韵 and reasonably wonder why both are listed.
+ *
+ * Returns false for chars unchanged across scripts (山, 水), chars
+ * with no CEDICT entry, and chars where the dictionary isn't loaded
+ * yet -- the safer default is "keep it visible" while data is missing.
+ */
+function isTraditionalOnly(char: string): boolean {
+  const entries = lookupExact(char);
+  if (!entries || entries.length === 0) return false;
+  // True only when EVERY entry for this char keys it as the
+  // traditional form of some other simplified char. If at least one
+  // entry uses `char` as its simplified form, treat it as a primary
+  // simplified character.
+  return entries.every(
+    (e) => e.traditional === char && e.simplified !== char,
+  );
+}
+
+/**
  * Builds the "Also contain X (different sound)" section under the
  * phonetic member groups. Filters the components-inverse-index to the
  * complement of the phonetic family (engaged/confident chars first,
@@ -673,6 +696,10 @@ function appendDecompositionSection(
 
   const withState = all
     .filter((ch) => ch !== fam.comp && !familyMemberSet.has(ch))
+    // Drop traditional-only forms whose simplified counterpart would
+    // appear above as a phonetic member or below as its own decomp
+    // entry; listing both 韻 and 韵 reads as a duplicate.
+    .filter((ch) => !isTraditionalOnly(ch))
     .map((ch) => ({ ch, state: memberStateFor(ch) }));
   if (withState.length === 0) return;
 
