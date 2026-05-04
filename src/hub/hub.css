@@ -3596,10 +3596,30 @@ body[data-theme="sepia"] .hub-tab-content::-webkit-scrollbar-thumb:hover {
   font-family: "Noto Sans SC", "Noto Serif SC", serif;
 }
 
+.vocab-card-family-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
 .vocab-card-family-comp-label {
   font-size: 13px;
   font-weight: 600;
   color: #1f2937;
+}
+
+.vocab-card-family-relation {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.vocab-card-family-link[data-relation="decomposition"] .vocab-card-family-relation {
+  color: #92400e;
+}
+
+.vocab-card-family-link[data-relation="head"] .vocab-card-family-relation {
+  color: #166534;
 }
 
 .vocab-card-family-size {
@@ -3757,6 +3777,18 @@ body[data-theme="dark"] .vocab-card-family-link:hover {
   border-color: #6366f1;
 }
 
+body[data-theme="dark"] .vocab-card-family-relation {
+  color: #9ca3af;
+}
+
+body[data-theme="dark"] .vocab-card-family-link[data-relation="decomposition"] .vocab-card-family-relation {
+  color: #fbbf24;
+}
+
+body[data-theme="dark"] .vocab-card-family-link[data-relation="head"] .vocab-card-family-relation {
+  color: #4ade80;
+}
+
 /* Sepia theme */
 
 body[data-theme="sepia"] .fm-subtab {
@@ -3884,4 +3916,16 @@ body[data-theme="sepia"] .vocab-card-family-link {
 body[data-theme="sepia"] .vocab-card-family-link:hover {
   background: #f0e0b8;
   border-color: #b8860b;
+}
+
+body[data-theme="sepia"] .vocab-card-family-relation {
+  color: #6b5a3a;
+}
+
+body[data-theme="sepia"] .vocab-card-family-link[data-relation="decomposition"] .vocab-card-family-relation {
+  color: #8b4513;
+}
+
+body[data-theme="sepia"] .vocab-card-family-link[data-relation="head"] .vocab-card-family-relation {
+  color: #5b7c1f;
 }

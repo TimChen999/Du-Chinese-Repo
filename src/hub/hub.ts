@@ -165,6 +165,179 @@ function getElements() {
  * shuffled so the user doesn't see a perfectly sorted order, but the
  * mix of due vs. not-due is preserved.
  */
+/**
+ * How a character relates to a phonetic family that's surfaced as a
+ * link from its detail card.
+ *   member        — char appears in the family's predictive members
+ *                   (e.g. 清 in 青's family). Standard "you can study
+ *                   this family because you already know one of its
+ *                   chars" surface.
+ *   head          — char IS the component the family is built around
+ *                   (e.g. 青 itself for 青's family). Studying the
+ *                   family teaches the user about the chars built
+ *                   FROM this character.
+ *   decomposition — char's decomposition includes a family-head
+ *                   component but the char itself isn't phonetic in
+ *                   that family (e.g. 章 contains 音 semantically; the
+ *                   sound rule fails so 章 isn't in 音's predictive
+ *                   set, but the link is still informative).
+ */
+type FamilyRelation = "member" | "head" | "decomposition";
+
+interface RelatedFamily {
+  comp: string;
+  relation: FamilyRelation;
+  familySize: number;
+  familyReading: string;
+}
+
+/**
+ * Returns every phonetic family the character is connected to, deduped
+ * across the three relation types in priority order: head > member >
+ * decomposition. The label rendered next to each link reflects the
+ * relation; "decomposition" rows are explicitly tagged so the user
+ * knows the char isn't a phonetic sibling of the family.
+ *
+ * Returns an empty array when the phonetic index isn't loaded yet --
+ * callers should re-run after ensurePhoneticsLoaded resolves.
+ */
+function relatedFamiliesFor(ch: string): RelatedFamily[] {
+  if (!isPhoneticsReady()) return [];
+  if (!ch || Array.from(ch).length !== 1) return [];
+
+  const out: RelatedFamily[] = [];
+  const seen = new Set<string>();
+
+  // Highest priority: char IS a family head. Studying the family means
+  // studying chars built from this one.
+  const headFam = lookupFamily(ch);
+  if (headFam) {
+    out.push({
+      comp: ch,
+      relation: "head",
+      familySize: headFam.members.length,
+      familyReading: headFam.reading,
+    });
+    seen.add(ch);
+  }
+
+  // Next: char is a phonetic member of one or more families.
+  for (const comp of familiesContaining(ch)) {
+    if (seen.has(comp)) continue;
+    const fam = lookupFamily(comp);
+    if (!fam) continue;
+    out.push({
+      comp,
+      relation: "member",
+      familySize: fam.members.length,
+      familyReading: fam.reading,
+    });
+    seen.add(comp);
+  }
+
+  // Last: char's decomposition contains a family-head component, but
+  // the char isn't phonetic in that family (otherwise it would have
+  // been picked up as a member already).
+  const compEntry = lookupComponents(ch);
+  if (compEntry) {
+    for (const leaf of leafComponents(compEntry.decomposition, ch)) {
+      if (seen.has(leaf)) continue;
+      const fam = lookupFamily(leaf);
+      if (!fam) continue;
+      out.push({
+        comp: leaf,
+        relation: "decomposition",
+        familySize: fam.members.length,
+        familyReading: fam.reading,
+      });
+      seen.add(leaf);
+    }
+  }
+
+  return out;
+}
+
+/** Caption shown to the right of the family glyph for each row. */
+function relationLabel(relation: FamilyRelation): string {
+  switch (relation) {
+    case "head":
+      return "Head of family";
+    case "member":
+      return "You're a member";
+    case "decomposition":
+      return "Via decomposition";
+  }
+}
+
+/**
+ * Builds a family-link section for the char detail card. Idempotent:
+ * clears `section` and re-renders against the current phonetics state,
+ * so callers can call this both at mount time and inside the
+ * ensurePhoneticsLoaded continuation.
+ */
+function fillFamilyLinkSection(
+  section: HTMLElement,
+  ch: string,
+  onClickPrelude: () => void,
+): void {
+  while (section.firstChild) section.removeChild(section.firstChild);
+  const related = relatedFamiliesFor(ch);
+  if (related.length === 0) {
+    section.hidden = true;
+    return;
+  }
+  section.hidden = false;
+
+  const heading = document.createElement("div");
+  heading.className = "vocab-card-family-heading";
+  heading.textContent =
+    related.length === 1 ? "Phonetic family" : "Phonetic families";
+  section.appendChild(heading);
+
+  for (const r of related) {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "vocab-card-family-link";
+    item.dataset.relation = r.relation;
+    item.addEventListener("click", () => {
+      onClickPrelude();
+      window.dispatchEvent(
+        new CustomEvent("library:switch-tab", { detail: "families" }),
+      );
+      void openFamilyDetail(r.comp);
+    });
+
+    const compGlyph = document.createElement("span");
+    compGlyph.className = "vocab-card-family-comp";
+    compGlyph.textContent = r.comp;
+
+    const compMeta = document.createElement("div");
+    compMeta.className = "vocab-card-family-meta";
+
+    const compLabel = document.createElement("span");
+    compLabel.className = "vocab-card-family-comp-label";
+    compLabel.textContent = formatPinyin(r.familyReading, "toneMarks");
+
+    const relationTag = document.createElement("span");
+    relationTag.className = "vocab-card-family-relation";
+    relationTag.textContent = relationLabel(r.relation);
+
+    compMeta.append(compLabel, relationTag);
+
+    const sizeNote = document.createElement("span");
+    sizeNote.className = "vocab-card-family-size";
+    sizeNote.textContent = `${r.familySize} chars`;
+
+    const arrow = document.createElement("span");
+    arrow.className = "vocab-card-family-arrow";
+    arrow.setAttribute("aria-hidden", "true");
+    arrow.textContent = "›";
+
+    item.append(compGlyph, compMeta, sizeNote, arrow);
+    section.appendChild(item);
+  }
+}
+
 export function buildSession(
   vocab: VocabEntry[],
   size: number,
@@ -974,67 +1147,20 @@ async function showVocabCard(
   // Phonetic-family cross-link (single-char headwords only). Mirrors
   // the equivalent block in showCharDetailCard so a saved single-char
   // entry exposes the same path into the Families tab the drill-down
-  // does.
+  // does. fillFamilyLinkSection handles the head/member/decomposition
+  // relation tagging.
   const familySection = document.createElement("div");
   familySection.className = "vocab-card-family-section";
   familySection.hidden = true;
 
   function refreshFamilyAffordance(): void {
-    while (familySection.firstChild) familySection.removeChild(familySection.firstChild);
     if (Array.from(entry.chars).length !== 1) {
       familySection.hidden = true;
+      while (familySection.firstChild)
+        familySection.removeChild(familySection.firstChild);
       return;
     }
-    if (!isPhoneticsReady()) {
-      familySection.hidden = true;
-      return;
-    }
-    const comps = familiesContaining(entry.chars);
-    if (comps.length === 0) {
-      familySection.hidden = true;
-      return;
-    }
-    familySection.hidden = false;
-
-    const heading = document.createElement("div");
-    heading.className = "vocab-card-family-heading";
-    heading.textContent = comps.length === 1 ? "Phonetic family" : "Phonetic families";
-    familySection.appendChild(heading);
-
-    for (const comp of comps) {
-      const fam = lookupFamily(comp);
-      if (!fam) continue;
-      const item = document.createElement("button");
-      item.type = "button";
-      item.className = "vocab-card-family-link";
-      item.addEventListener("click", () => {
-        dismissVocabCard();
-        window.dispatchEvent(
-          new CustomEvent("library:switch-tab", { detail: "families" }),
-        );
-        void openFamilyDetail(comp);
-      });
-
-      const compGlyph = document.createElement("span");
-      compGlyph.className = "vocab-card-family-comp";
-      compGlyph.textContent = comp;
-
-      const compLabel = document.createElement("span");
-      compLabel.className = "vocab-card-family-comp-label";
-      compLabel.textContent = formatPinyin(fam.reading, "toneMarks");
-
-      const sizeNote = document.createElement("span");
-      sizeNote.className = "vocab-card-family-size";
-      sizeNote.textContent = `${fam.members.length} chars`;
-
-      const arrow = document.createElement("span");
-      arrow.className = "vocab-card-family-arrow";
-      arrow.setAttribute("aria-hidden", "true");
-      arrow.textContent = "›";
-
-      item.append(compGlyph, compLabel, sizeNote, arrow);
-      familySection.appendChild(item);
-    }
+    fillFamilyLinkSection(familySection, entry.chars, () => dismissVocabCard());
   }
   refreshFamilyAffordance();
 
@@ -1375,67 +1501,17 @@ function showCharDetailCard(
       });
   }
 
-  // Phonetic-family cross-link: when the character is a member of a
-  // phonetic family, surface the component + a quick coverage line and
-  // a button that switches to the Families tab and opens that family.
-  // Hidden when the index isn't loaded or the char has no family.
+  // Phonetic-family cross-link. Pulls every family the char is
+  // related to: head (it IS a family component), member (phonetic
+  // sibling), or decomposition (the char's decomposition contains a
+  // family head, like 章 → 音 — useful even though 章 isn't phonetic
+  // in 音's family).
   const familySection = document.createElement("div");
   familySection.className = "vocab-card-family-section";
   familySection.hidden = true;
 
   function refreshFamilyAffordance(): void {
-    while (familySection.firstChild) familySection.removeChild(familySection.firstChild);
-    if (!isPhoneticsReady()) {
-      familySection.hidden = true;
-      return;
-    }
-    const comps = familiesContaining(ch);
-    if (comps.length === 0) {
-      familySection.hidden = true;
-      return;
-    }
-    familySection.hidden = false;
-
-    const heading = document.createElement("div");
-    heading.className = "vocab-card-family-heading";
-    heading.textContent = comps.length === 1 ? "Phonetic family" : "Phonetic families";
-    familySection.appendChild(heading);
-
-    for (const comp of comps) {
-      const fam = lookupFamily(comp);
-      if (!fam) continue;
-      const item = document.createElement("button");
-      item.type = "button";
-      item.className = "vocab-card-family-link";
-      item.addEventListener("click", () => {
-        dismissVocabCard();
-        const evt = new CustomEvent("library:switch-tab", {
-          detail: "families",
-        });
-        window.dispatchEvent(evt);
-        void openFamilyDetail(comp);
-      });
-
-      const compGlyph = document.createElement("span");
-      compGlyph.className = "vocab-card-family-comp";
-      compGlyph.textContent = comp;
-
-      const compLabel = document.createElement("span");
-      compLabel.className = "vocab-card-family-comp-label";
-      compLabel.textContent = formatPinyin(fam.reading, "toneMarks");
-
-      const sizeNote = document.createElement("span");
-      sizeNote.className = "vocab-card-family-size";
-      sizeNote.textContent = `${fam.members.length} chars`;
-
-      const arrow = document.createElement("span");
-      arrow.className = "vocab-card-family-arrow";
-      arrow.setAttribute("aria-hidden", "true");
-      arrow.textContent = "›";
-
-      item.append(compGlyph, compLabel, sizeNote, arrow);
-      familySection.appendChild(item);
-    }
+    fillFamilyLinkSection(familySection, ch, () => dismissVocabCard());
   }
   refreshFamilyAffordance();
 
