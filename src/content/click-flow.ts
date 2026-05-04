@@ -374,14 +374,14 @@ function previewRangeForCaret(caret: CaretPosition): Range | null {
   if (sentence) {
     const state = sentenceStates.get(sentence.text);
     if (state && state.kind === "hot") {
-      const slot = findLlmWordAtOffset(state.words, sentence.text, offset, text);
-      if (slot) {
-        return buildTextRange(
-          caret.node as Text,
-          slot.startInTextNode,
-          slot.endInTextNode,
-        );
-      }
+      const slot = findLlmWordAtOffset(
+        state.words,
+        sentence,
+        caret.node as Text,
+        offset,
+        ownerDoc,
+      );
+      if (slot) return slot.range;
     }
   }
 
@@ -404,43 +404,162 @@ function previewRangeForCaret(caret: CaretPosition): Range | null {
 
 interface LlmSlot {
   word: LLMSentenceWord;
-  startInTextNode: number;
-  endInTextNode: number;
+  range: Range;
+}
+
+interface SentenceTextSegment {
+  node: Text;
+  startOffset: number;
+  endOffset: number;
 }
 
 /**
- * Maps the caret's text-node offset to the LLM word it falls inside.
+ * Walks the sentence Range and collects per-text-node segments that
+ * (when sliced via .data.slice(startOffset, endOffset) and concatenated)
+ * reproduce the sentence string. Needed because pages with inline `<a>`,
+ * `<span>`, etc. break sentences across multiple text nodes — the LLM
+ * sees the reconstructed string but the caret lives in one of the
+ * fragments.
+ */
+function sentenceTextSegments(range: Range): SentenceTextSegment[] | null {
+  const startContainer = range.startContainer;
+  const endContainer = range.endContainer;
+  if (
+    startContainer.nodeType !== Node.TEXT_NODE ||
+    endContainer.nodeType !== Node.TEXT_NODE
+  ) {
+    return null;
+  }
+
+  if (startContainer === endContainer) {
+    return [{
+      node: startContainer as Text,
+      startOffset: range.startOffset,
+      endOffset: range.endOffset,
+    }];
+  }
+
+  const root = range.commonAncestorContainer;
+  const doc = startContainer.ownerDocument ?? document;
+  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const data = (node as Text).data;
+      return data.length > 0
+        ? NodeFilter.FILTER_ACCEPT
+        : NodeFilter.FILTER_REJECT;
+    },
+  });
+
+  const segments: SentenceTextSegment[] = [{
+    node: startContainer as Text,
+    startOffset: range.startOffset,
+    endOffset: (startContainer as Text).data.length,
+  }];
+
+  walker.currentNode = startContainer;
+  let cur = walker.nextNode() as Text | null;
+  while (cur) {
+    if (cur === endContainer) {
+      segments.push({ node: cur, startOffset: 0, endOffset: range.endOffset });
+      return segments;
+    }
+    segments.push({ node: cur, startOffset: 0, endOffset: cur.data.length });
+    cur = walker.nextNode() as Text | null;
+  }
+
+  return null;
+}
+
+/**
+ * Maps a sentence-relative offset (0 = sentence start) back to (textNode,
+ * offset). The trailing boundary is inclusive so word-end maps to the
+ * same point as the next word's start.
+ */
+function sentenceOffsetToPosition(
+  segments: SentenceTextSegment[],
+  sentenceOffset: number,
+): { node: Text; offset: number } | null {
+  let cursor = 0;
+  for (const seg of segments) {
+    const segLen = seg.endOffset - seg.startOffset;
+    if (sentenceOffset >= cursor && sentenceOffset <= cursor + segLen) {
+      return {
+        node: seg.node,
+        offset: seg.startOffset + (sentenceOffset - cursor),
+      };
+    }
+    cursor += segLen;
+  }
+  return null;
+}
+
+/**
+ * Maps the caret's (textNode, offset) to the LLM word it falls inside,
+ * across text-node boundaries. Walks the sentence Range's segments to:
+ *   1. Compute the caret's offset within the sentence string.
+ *   2. Find which LLM word covers that sentence offset.
+ *   3. Build a Range for the word, even when its boundaries span nodes.
  *
- * The LLM segmentation is over the *sentence string*, but the caret
- * offset is into the *text node*. They line up only when the whole
- * sentence is in one text node — which is the common case but not
- * guaranteed. For a simple, robust mapping we find the offset of the
- * sentence in the text node first, then walk LLM words.
+ * Returns null when the segments don't reproduce the cached sentence
+ * (e.g. DOM mutated since detection) or the caret isn't in any segment.
  */
 function findLlmWordAtOffset(
   words: LLMSentenceWord[],
-  sentence: string,
+  sentence: SentenceResult,
+  caretNode: Text,
   caretOffsetInTextNode: number,
-  textNodeData: string,
+  doc: Document,
 ): LlmSlot | null {
-  const sentStart = textNodeData.indexOf(sentence);
-  if (sentStart < 0) return null;
-  const within = caretOffsetInTextNode - sentStart;
-  if (within < 0 || within >= sentence.length) return null;
+  const segments = sentenceTextSegments(sentence.range);
+  if (!segments) return null;
 
-  let cursor = 0;
-  for (const w of words) {
-    const next = cursor + w.text.length;
-    if (within >= cursor && within < next) {
-      return {
-        word: w,
-        startInTextNode: sentStart + cursor,
-        endInTextNode: sentStart + next,
-      };
-    }
-    cursor = next;
+  let assembled = "";
+  for (const seg of segments) {
+    assembled += seg.node.data.slice(seg.startOffset, seg.endOffset);
   }
-  return null;
+  if (assembled !== sentence.text) return null;
+
+  let caretSentOffset = -1;
+  let cursor = 0;
+  for (const seg of segments) {
+    const segLen = seg.endOffset - seg.startOffset;
+    if (
+      seg.node === caretNode &&
+      caretOffsetInTextNode >= seg.startOffset &&
+      caretOffsetInTextNode <= seg.endOffset
+    ) {
+      caretSentOffset = cursor + (caretOffsetInTextNode - seg.startOffset);
+      break;
+    }
+    cursor += segLen;
+  }
+  if (caretSentOffset < 0 || caretSentOffset >= sentence.text.length) return null;
+
+  let wordStart = 0;
+  let matched: LLMSentenceWord | null = null;
+  for (const w of words) {
+    const wordEnd = wordStart + w.text.length;
+    if (caretSentOffset >= wordStart && caretSentOffset < wordEnd) {
+      matched = w;
+      break;
+    }
+    wordStart = wordEnd;
+  }
+  if (!matched) return null;
+  const wordEnd = wordStart + matched.text.length;
+
+  const startPos = sentenceOffsetToPosition(segments, wordStart);
+  const endPos = sentenceOffsetToPosition(segments, wordEnd);
+  if (!startPos || !endPos) return null;
+
+  const range = doc.createRange();
+  try {
+    range.setStart(startPos.node, startPos.offset);
+    range.setEnd(endPos.node, endPos.offset);
+  } catch {
+    return null;
+  }
+  return { word: matched, range };
 }
 
 // ─── Click (commit) ────────────────────────────────────────────────
@@ -664,13 +783,12 @@ function pickWordRangeOnClick(
   const node = caret.node as Text;
   const text = caret.text;
   const offset = caret.offset;
+  const ownerDoc = node.ownerDocument ?? document;
 
   const state = sentenceStates.get(sentence.text);
   if (state && state.kind === "hot") {
-    const slot = findLlmWordAtOffset(state.words, sentence.text, offset, text);
-    if (slot) {
-      return buildTextRange(node, slot.startInTextNode, slot.endInTextNode);
-    }
+    const slot = findLlmWordAtOffset(state.words, sentence, node, offset, ownerDoc);
+    if (slot) return slot.range;
   }
 
   if (isDictionaryReady()) {
@@ -780,7 +898,11 @@ function onMessage(message: ExtensionMessage): void {
 
 function handleSentenceLLM(msg: SentenceTranslateResponseLLM): void {
   // Cache regardless of whether it's still showing — we want it for
-  // future clicks in this tab.
+  // future clicks in this tab. Subsequent hover/click resolves through
+  // the hot path in previewRangeForCaret / pickWordRangeOnClick, so a
+  // fresh interaction will pick up the LLM's wider grouping. We do NOT
+  // mutate the open popup's word header here — the user may be reading
+  // it, and a sudden widen mid-popup is jarring.
   sentenceStates.set(msg.sentence, {
     kind: "hot",
     words: msg.words,
@@ -794,9 +916,9 @@ function handleSentenceLLM(msg: SentenceTranslateResponseLLM): void {
   const popupWord = currentClickedWord() ?? "";
   upgradeStripWithLlm(msg.words, popupWord);
 
-  // Find the clicked word in the LLM's segmentation. We don't know the
-  // caret offset anymore at this point; we use the word currently shown
-  // in the popup as the lookup key.
+  // Refresh the popup's word card with contextual pinyin/gloss only when
+  // the LLM's segmentation produced the SAME chars the user is reading.
+  // No widening — that's reserved for the next click/hover.
   if (popupWord) {
     const match = msg.words.find((w) => w.text === popupWord);
     if (match) {
