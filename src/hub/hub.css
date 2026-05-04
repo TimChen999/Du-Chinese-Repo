@@ -3391,6 +3391,23 @@ body[data-theme="sepia"] .hub-tab-content::-webkit-scrollbar-thumb:hover {
   color: #4b5563;
 }
 
+.fm-decomp-group {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px dashed #d1d5db;
+}
+
+.fm-decomp-group .fm-member-group-heading {
+  color: #92400e;
+}
+
+.fm-decomp-more {
+  font-size: 12px;
+  color: #6b7280;
+  padding: 6px 10px;
+  font-style: italic;
+}
+
 .fm-state-confident .fm-member-status {
   background: #dcfce7;
   color: #166534;
@@ -3758,6 +3775,18 @@ body[data-theme="dark"] .fm-member-def {
   color: #d1d5db;
 }
 
+body[data-theme="dark"] .fm-decomp-group {
+  border-top-color: #374151;
+}
+
+body[data-theme="dark"] .fm-decomp-group .fm-member-group-heading {
+  color: #fbbf24;
+}
+
+body[data-theme="dark"] .fm-decomp-more {
+  color: #9ca3af;
+}
+
 body[data-theme="dark"] .fm-study-card {
   background: #1f2937;
   border-color: #374151;
@@ -3897,6 +3926,18 @@ body[data-theme="sepia"] .fm-member-row {
 body[data-theme="sepia"] .fm-state-untouched {
   background: #faf3e3;
   border-color: #d4c8ab;
+}
+
+body[data-theme="sepia"] .fm-decomp-group {
+  border-top-color: #d4c8ab;
+}
+
+body[data-theme="sepia"] .fm-decomp-group .fm-member-group-heading {
+  color: #8b4513;
+}
+
+body[data-theme="sepia"] .fm-decomp-more {
+  color: #6b5a3a;
 }
 
 body[data-theme="sepia"] .fm-study-card {

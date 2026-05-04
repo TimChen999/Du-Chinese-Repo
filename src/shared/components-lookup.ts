@@ -25,6 +25,17 @@ export interface ComponentsEntry {
 let dictionary: Map<string, ComponentsEntry> | null = null;
 let loadPromise: Promise<Map<string, ComponentsEntry>> | null = null;
 
+/**
+ * Lazy inverse index: leaf-component → every character whose
+ * decomposition lists that leaf. Built on first call to
+ * charsContaining(); rebuilt automatically after _resetComponentsForTests.
+ *
+ * Used by the Families tab to surface decomposition-only siblings
+ * (chars that contain a phonetic head but aren't phonetic members,
+ * e.g. 章 vs. 音).
+ */
+let inverseIndex: Map<string, string[]> | null = null;
+
 export function isComponentsReady(): boolean {
   return dictionary !== null;
 }
@@ -32,6 +43,33 @@ export function isComponentsReady(): boolean {
 export function lookupComponents(char: string): ComponentsEntry | null {
   if (!dictionary || !char) return null;
   return dictionary.get(char) ?? null;
+}
+
+/**
+ * Returns every character whose decomposition (per Make Me a Hanzi)
+ * lists `component` as a leaf. Builds the inverse index lazily on
+ * first call. Returns an empty array when the dictionary isn't
+ * loaded or the component appears in no decompositions.
+ *
+ * Iteration order isn't guaranteed; callers should sort.
+ */
+export function charsContaining(component: string): string[] {
+  if (!dictionary || !component) return [];
+  if (!inverseIndex) {
+    const m = new Map<string, string[]>();
+    for (const [ch, entry] of dictionary) {
+      for (const leaf of leafComponents(entry.decomposition, ch)) {
+        let arr = m.get(leaf);
+        if (!arr) {
+          arr = [];
+          m.set(leaf, arr);
+        }
+        arr.push(ch);
+      }
+    }
+    inverseIndex = m;
+  }
+  return inverseIndex.get(component) ?? [];
 }
 
 export async function ensureComponentsLoaded(
@@ -123,10 +161,12 @@ function defaultResolveUrl(path: string): string {
 export function _resetComponentsForTests(): void {
   dictionary = null;
   loadPromise = null;
+  inverseIndex = null;
 }
 
 /** Test-only: install a pre-parsed map (skips fetch). */
 export function _setComponentsForTests(map: Map<string, ComponentsEntry>): void {
   dictionary = map;
   loadPromise = Promise.resolve(map);
+  inverseIndex = null;
 }

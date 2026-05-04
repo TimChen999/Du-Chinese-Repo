@@ -43,6 +43,11 @@ import {
   lookupExact,
 } from "../shared/cedict-lookup";
 import {
+  charsContaining,
+  ensureComponentsLoaded,
+  isComponentsReady,
+} from "../shared/components-lookup";
+import {
   allFamilies,
   ensurePhoneticsLoaded,
   isPhoneticsReady,
@@ -526,6 +531,11 @@ export async function openFamilyDetail(comp: string): Promise<void> {
       if (activeFamily?.comp === comp) renderDetail();
     }).catch(() => {});
   }
+  if (!isComponentsReady()) {
+    void ensureComponentsLoaded().then(() => {
+      if (activeFamily?.comp === comp) renderDetail();
+    }).catch(() => {});
+  }
   await openDetail(comp);
 }
 
@@ -610,6 +620,13 @@ function renderDetail(): void {
     els.members.appendChild(section);
   }
 
+  // Decomposition-only siblings: chars that contain this component
+  // but aren't phonetic family members (e.g. 章/竟 in 音's family).
+  // Useful for visual recognition and disambiguation; clearly
+  // separated from the phonetic groups so the user can't mistake
+  // them for sound siblings.
+  appendDecompositionSection(els.members, activeFamily);
+
   // Action bar — Study (only when there are untouched members)
   if (els.actions) {
     while (els.actions.firstChild) els.actions.removeChild(els.actions.firstChild);
@@ -622,6 +639,124 @@ function renderDetail(): void {
         ? "Study 1 untouched"
         : `Study ${untouched.length} untouched`;
   }
+}
+
+/** Hard cap on untouched decomp-only chars rendered. Components like
+ *  氵 / 口 contain 400+ chars; an unbounded list would dominate the
+ *  family card. Engaged/confident chars are always shown regardless. */
+const DECOMP_UNTOUCHED_CAP = 24;
+
+/**
+ * Looks up CC-CEDICT pinyin (numeric form) for a single character.
+ * Returns null when the dictionary isn't loaded or the char has no
+ * entry. Single-char-aware: uses the first reading only.
+ */
+function readingFor(char: string): string | null {
+  const entries = lookupExact(char);
+  return entries?.[0]?.pinyinNumeric ?? null;
+}
+
+/**
+ * Builds the "Also contain X (different sound)" section under the
+ * phonetic member groups. Filters the components-inverse-index to the
+ * complement of the phonetic family (engaged/confident chars first,
+ * then untouched up to a cap, with a "+ N more" indicator).
+ */
+function appendDecompositionSection(
+  container: HTMLElement,
+  fam: FamilyState,
+): void {
+  if (!isComponentsReady()) return;
+  const familyMemberSet = new Set(fam.members.map((m) => m.char));
+  const all = charsContaining(fam.comp);
+  if (all.length === 0) return;
+
+  const withState = all
+    .filter((ch) => ch !== fam.comp && !familyMemberSet.has(ch))
+    .map((ch) => ({ ch, state: memberStateFor(ch) }));
+  if (withState.length === 0) return;
+
+  // Sort: any-state-but-untouched first (so the user's known chars
+  // surface), then alphabetical (Han codepoint order) within bands.
+  withState.sort((a, b) => {
+    const aRank = STATE_RANK[a.state];
+    const bRank = STATE_RANK[b.state];
+    if (aRank !== bRank) return bRank - aRank;
+    return a.ch.localeCompare(b.ch);
+  });
+
+  // Cap untouched rows; always show engaged ones.
+  const visible: { ch: string; state: MemberState }[] = [];
+  let untouchedShown = 0;
+  for (const item of withState) {
+    if (item.state === "untouched") {
+      if (untouchedShown >= DECOMP_UNTOUCHED_CAP) continue;
+      untouchedShown++;
+    }
+    visible.push(item);
+  }
+  const totalUntouched = withState.filter((x) => x.state === "untouched").length;
+  const hiddenCount = totalUntouched - untouchedShown;
+
+  const section = document.createElement("div");
+  section.className = "fm-member-group fm-decomp-group";
+
+  const heading = document.createElement("div");
+  heading.className = "fm-member-group-heading";
+  heading.textContent = `Also contain ${fam.comp}`;
+  const hint = document.createElement("span");
+  hint.className = "fm-member-group-hint";
+  hint.textContent =
+    " — visually shared but not phonetically related. " +
+    "Useful for recognition / disambiguation.";
+  heading.appendChild(hint);
+  section.appendChild(heading);
+
+  for (const item of visible) {
+    section.appendChild(renderDecompRow(item.ch, item.state));
+  }
+
+  if (hiddenCount > 0) {
+    const more = document.createElement("div");
+    more.className = "fm-decomp-more";
+    more.textContent = `+ ${hiddenCount} more rare ${
+      hiddenCount === 1 ? "character" : "characters"
+    }`;
+    section.appendChild(more);
+  }
+
+  container.appendChild(section);
+}
+
+/**
+ * Row layout matches renderMemberRow so the decomposition section
+ * reads like a continuation of the phonetic groups, but the parent
+ * section's `.fm-decomp-group` class lets CSS subtly tint it
+ * differently so the visual boundary is obvious.
+ */
+function renderDecompRow(ch: string, state: MemberState): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "fm-member-row fm-state-" + state;
+
+  const han = document.createElement("span");
+  han.className = "fm-member-han";
+  han.textContent = ch;
+
+  const pinyin = document.createElement("span");
+  pinyin.className = "fm-member-pinyin";
+  const reading = readingFor(ch);
+  pinyin.textContent = reading ? formatPinyin(reading, "toneMarks") : "";
+
+  const def = document.createElement("span");
+  def.className = "fm-member-def";
+  def.textContent = glossFor(ch);
+
+  const status = document.createElement("span");
+  status.className = "fm-member-status";
+  status.textContent = state === "untouched" ? "Untouched" : bucketLabel(state);
+
+  row.append(han, pinyin, def, status);
+  return row;
 }
 
 function renderMemberRow(m: MemberWithState): HTMLElement {
@@ -895,6 +1030,17 @@ export async function refreshFamiliesView(): Promise<void> {
   await refreshVocabIndex();
   if (!isDictionaryReady()) {
     void ensureDictionaryLoaded().then(() => renderList()).catch(() => {});
+  }
+  // The decomposition-only section in the family detail panel needs
+  // the components dictionary; trigger the load even if the user
+  // never opens a detail card -- it's the same data hub.ts already
+  // pulls for the Components dropdown so the round-trip is shared.
+  if (!isComponentsReady()) {
+    void ensureComponentsLoaded()
+      .then(() => {
+        if (activeFamily) renderDetail();
+      })
+      .catch(() => {});
   }
   if (!isPhoneticsReady()) {
     try {
