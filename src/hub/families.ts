@@ -97,17 +97,69 @@ function isEngaged(state: MemberState): boolean {
 
 // ─── Derived state per render ────────────────────────────────────────
 
-let vocabIndex: Map<string, VocabEntry> = new Map();
+/**
+ * Inverse index: single-char codepoint → every vocab entry whose
+ * `chars` field contains it. Lets a member like 学 in its family pick
+ * up state from a saved multi-char word like 学习, so the user gets
+ * credit for characters they only ever save in compound form.
+ *
+ * Direct single-char vocab entries appear here too (the entry whose
+ * `chars` is exactly the character is one of its containing entries).
+ */
+let containingEntries: Map<string, VocabEntry[]> = new Map();
 
 async function refreshVocabIndex(): Promise<void> {
   const all = await getAllVocab();
-  vocabIndex = new Map(all.map((e) => [e.chars, e]));
+  containingEntries = new Map();
+  for (const entry of all) {
+    // Iterate by codepoint so supplementary-plane characters survive.
+    const cps = Array.from(entry.chars);
+    // Dedupe so a repeated character (e.g. 中 in 中共中央) doesn't
+    // double-count its containing entry.
+    const seen = new Set<string>();
+    for (const ch of cps) {
+      if (seen.has(ch)) continue;
+      seen.add(ch);
+      let arr = containingEntries.get(ch);
+      if (!arr) {
+        arr = [];
+        containingEntries.set(ch, arr);
+      }
+      arr.push(entry);
+    }
+  }
 }
 
+/** Higher rank == stronger evidence the user knows the character. */
+const STATE_RANK: Record<MemberState, number> = {
+  untouched: 0,
+  "not-reviewed": 1,
+  "needs-improvement": 2,
+  confident: 3,
+};
+
+/**
+ * Picks the strongest evidence among every saved word that contains
+ * the character. A confident multi-char word (e.g. 学习 mature in SRS)
+ * promotes its component chars to "confident" in their respective
+ * family views -- you don't need to separately drill 学 to deserve
+ * credit for it. Direct single-char entries still go through this
+ * path naturally, since they appear as their own containing entry.
+ */
 function memberStateFor(char: string): MemberState {
-  const entry = vocabIndex.get(char);
-  if (!entry) return "untouched";
-  return getVocabBucket(entry);
+  const containing = containingEntries.get(char);
+  if (!containing || containing.length === 0) return "untouched";
+  let best: MemberState = "untouched";
+  let bestRank = -1;
+  for (const e of containing) {
+    const bucket = getVocabBucket(e);
+    const rank = STATE_RANK[bucket];
+    if (rank > bestRank) {
+      bestRank = rank;
+      best = bucket;
+    }
+  }
+  return best;
 }
 
 function buildFamilyState(comp: string, family: PhoneticFamily): FamilyState {
