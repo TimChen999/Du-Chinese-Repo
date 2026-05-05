@@ -3342,6 +3342,30 @@ body[data-theme="sepia"] .hub-tab-content::-webkit-scrollbar-thumb:hover {
   border-radius: 8px;
   background: #fafafa;
   border: 1px solid transparent;
+  font: inherit;
+  text-align: left;
+  width: 100%;
+}
+
+button.fm-member-row {
+  /* Reset native button chrome that bleeds in when the row is rendered
+     as a button for click-to-open. The shared layout above already
+     gives it the right visual rhythm. */
+  appearance: none;
+  background-clip: padding-box;
+}
+
+.fm-member-row-clickable {
+  cursor: pointer;
+  transition: border-color 0.1s, transform 0.05s;
+}
+
+.fm-member-row-clickable:hover {
+  border-color: #818cf8;
+}
+
+.fm-member-row-clickable:active {
+  transform: translateY(1px);
 }
 
 .fm-state-confident {

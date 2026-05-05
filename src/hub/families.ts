@@ -62,6 +62,7 @@ import {
   type VocabBucket,
 } from "../shared/srs";
 import type { VocabEntry } from "../shared/types";
+import { showStandaloneCharDetailCard } from "./hub";
 
 // ─── State per character ─────────────────────────────────────────────
 
@@ -762,8 +763,13 @@ function appendDecompositionSection(
  * differently so the visual boundary is obvious.
  */
 function renderDecompRow(ch: string, state: MemberState): HTMLElement {
-  const row = document.createElement("div");
-  row.className = "fm-member-row fm-state-" + state;
+  const row = document.createElement("button");
+  row.type = "button";
+  row.className = "fm-member-row fm-member-row-clickable fm-state-" + state;
+  row.setAttribute("aria-label", `Open ${ch}`);
+  row.addEventListener("click", () => {
+    showStandaloneCharDetailCard(ch);
+  });
 
   const han = document.createElement("span");
   han.className = "fm-member-han";
@@ -787,8 +793,13 @@ function renderDecompRow(ch: string, state: MemberState): HTMLElement {
 }
 
 function renderMemberRow(m: MemberWithState): HTMLElement {
-  const row = document.createElement("div");
-  row.className = "fm-member-row fm-state-" + m.state;
+  const row = document.createElement("button");
+  row.type = "button";
+  row.className = "fm-member-row fm-member-row-clickable fm-state-" + m.state;
+  row.setAttribute("aria-label", `Open ${m.char}`);
+  row.addEventListener("click", () => {
+    showStandaloneCharDetailCard(m.char);
+  });
 
   const han = document.createElement("span");
   han.className = "fm-member-han";

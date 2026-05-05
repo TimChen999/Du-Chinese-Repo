@@ -1310,9 +1310,20 @@ async function showVocabCard(
  *  - No bucket pill / SRS metadata / delete button — the character
  *    isn't a vocab entry here, just a CC-CEDICT lookup.
  */
+/**
+ * Public entry point used by the Families tab when the user clicks a
+ * member character row. The card opens with no back arrow (just the
+ * close button) so dismissing returns to whatever surface lay
+ * underneath -- in this case the Family detail panel, which doesn't
+ * need restoration since it stays mounted.
+ */
+export function showStandaloneCharDetailCard(ch: string): void {
+  showCharDetailCard(ch, null, getElements());
+}
+
 function showCharDetailCard(
   ch: string,
-  parentEntry: VocabEntry,
+  parentEntry: VocabEntry | null,
   els: ReturnType<typeof getElements>,
 ): void {
   dismissVocabCard();
@@ -1324,17 +1335,21 @@ function showCharDetailCard(
   const card = document.createElement("div");
   card.className = "vocab-card vocab-card-char-detail";
 
-  // Back arrow (top-left) — pops back to the parent vocab card the user
-  // drilled in from. Mirrors the close button's positioning so the two
-  // controls bookend the top row.
-  const backBtn = document.createElement("button");
-  backBtn.type = "button";
-  backBtn.className = "vocab-card-back";
-  backBtn.setAttribute("aria-label", `Back to ${parentEntry.chars}`);
-  backBtn.textContent = "←"; // left arrow
-  backBtn.addEventListener("click", () => {
-    void showVocabCard(parentEntry, els);
-  });
+  // Back arrow (top-left) -- only when there's a parent vocab card to
+  // return to. Standalone openings (e.g. from the Families tab) skip
+  // the back arrow because dismissing the overlay leaves the user on
+  // whatever surface lay underneath.
+  let backBtn: HTMLButtonElement | null = null;
+  if (parentEntry) {
+    backBtn = document.createElement("button");
+    backBtn.type = "button";
+    backBtn.className = "vocab-card-back";
+    backBtn.setAttribute("aria-label", `Back to ${parentEntry.chars}`);
+    backBtn.textContent = "←"; // left arrow
+    backBtn.addEventListener("click", () => {
+      void showVocabCard(parentEntry, els);
+    });
+  }
 
   const closeBtn = document.createElement("button");
   closeBtn.className = "vocab-card-close";
@@ -1526,8 +1541,8 @@ function showCharDetailCard(
       });
   }
 
+  if (backBtn) card.appendChild(backBtn);
   card.append(
-    backBtn,
     closeBtn,
     charsRow,
     pinyin,
