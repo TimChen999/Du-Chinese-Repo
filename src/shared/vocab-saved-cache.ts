@@ -19,7 +19,9 @@
  * needed.
  */
 
-const STORAGE_KEY = "vocabStore";
+import { VOCAB_STORAGE_KEY } from "./constants";
+
+const STORAGE_KEY = VOCAB_STORAGE_KEY;
 
 let saved = new Set<string>();
 let initialized = false;

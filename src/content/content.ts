@@ -39,7 +39,6 @@ import {
 import {
   initVocabSavedCache,
   isVocabSaved,
-  markVocabSavedLocally,
 } from "../shared/vocab-saved-cache";
 
 // ─── Settings cache (mirrored to click-flow) ──────────────────────
@@ -58,18 +57,13 @@ let pendingOCRRect:
 // ─── Click-flow init + vocab wiring ───────────────────────────────
 
 // Wire the popup's saved-state predicate to the live cache and warm
-// the cache from chrome.storage.local. After the +Vocab callback
-// fires, mark the chars locally so the popup's own dataset re-reads
-// don't see a stale "not saved" answer before the storage onChanged
-// notification round-trips. Returning the promise (rather than
-// firing-and-forgetting) lets tests `await cb(...)` and observe the
-// post-translate SET_EXAMPLE_TRANSLATION message before asserting.
+// the cache from chrome.storage.local. handleVocabCapture itself
+// flips the local cache before sending RECORD_WORD so the popup's
+// next isVocabSaved() read sees the new state without waiting on the
+// storage onChanged round-trip.
 initVocabSavedCache();
 setClickPopupVocabSavedChecker(isVocabSaved);
-setClickPopupVocabCallback((word, context) => {
-  markVocabSavedLocally(word.chars);
-  return handleVocabCapture(word, context);
-});
+setClickPopupVocabCallback(handleVocabCapture);
 initClickFlow();
 
 // ─── Incoming message listener ────────────────────────────────────

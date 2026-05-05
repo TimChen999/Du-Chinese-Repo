@@ -88,6 +88,15 @@ export const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 export const MAX_CACHE_ENTRIES = 5000;
 
 // ─── Vocab Store Configuration ────────────────────────────────────
+/**
+ * chrome.storage.local key under which the vocab Record<chars, VocabEntry>
+ * is persisted. Shared between the authoritative store
+ * (background/vocab-store.ts) and the synchronous saved-state cache
+ * (shared/vocab-saved-cache.ts) so the two can never silently drift
+ * apart and start watching different keys.
+ */
+export const VOCAB_STORAGE_KEY = "vocabStore";
+
 /** Maximum number of words to store in the vocab list. Least-frequent entries are dropped first. */
 export const MAX_VOCAB_ENTRIES = 10_000;
 

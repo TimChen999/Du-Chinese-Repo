@@ -20,7 +20,7 @@
  *     so the stored snippet reads like a single thought.
  *  3. Send RECORD_WORD with `{word, example}` so the service worker
  *     persists immediately. Awaiting the on-device Translator before
- *     this would block the user's "Added" feedback in the overlay.
+ *     this would block the user's "Saved" feedback in the overlay.
  *  4. Asynchronously translate via the on-device Translator API
  *     (which needs the user activation the +Vocab click supplies);
  *     when it resolves, ship SET_EXAMPLE_TRANSLATION so the SW
@@ -34,11 +34,19 @@
 
 import { isUsableExample, trimSentenceForExample } from "./example-quality";
 import { translateExampleSentence } from "./translate-example";
+import { markVocabSavedLocally } from "./vocab-saved-cache";
 
 export async function handleVocabCapture(
   word: { chars: string; pinyin: string; definition: string },
   context: string,
 ): Promise<void> {
+  // Optimistically mark saved before the storage round-trip so the
+  // popup's next isVocabSaved() read (and any other surface watching
+  // the cache) sees the new state immediately rather than waiting on
+  // chrome.storage.onChanged. Idempotent — the listener will arrive
+  // and re-sync the full key set shortly after.
+  markVocabSavedLocally(word.chars);
+
   let example: { sentence: string } | undefined;
   if (context && isUsableExample(word.chars, context)) {
     example = { sentence: trimSentenceForExample(context, word.chars) };

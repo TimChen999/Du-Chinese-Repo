@@ -13,10 +13,11 @@ import {
   MAX_VOCAB_ENTRIES,
   MAX_VOCAB_EXAMPLES,
   VOCAB_STOP_WORDS,
+  VOCAB_STORAGE_KEY,
 } from "../shared/constants";
 import { applyReviewResult } from "../shared/srs";
 
-const STORAGE_KEY = "vocabStore";
+const STORAGE_KEY = VOCAB_STORAGE_KEY;
 
 type VocabRecord = Record<string, VocabEntry>;
 

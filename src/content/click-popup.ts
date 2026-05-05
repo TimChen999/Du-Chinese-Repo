@@ -71,14 +71,13 @@ let vocabCallback:
  */
 let isVocabSavedFn: (chars: string) => boolean = () => false;
 /**
- * Notified once per (popup-instance, word) pair when the popup is
- * opened or retargeted to a word. The host wires this to the vocab
- * "view count" bump pipeline; the popup itself just ensures it's only
- * fired once per word per popup so retargeting back-and-forth between
- * two words inside the same sentence doesn't double-count either.
+ * Notified on every popup open and same-popup retarget so the host can
+ * apply its own dedup and decide whether to bump the word's "times
+ * seen" count. The popup deliberately doesn't dedup here — the host
+ * (click-flow) keeps the page-session-wide Map<sentence, Set<chars>>
+ * which is strictly broader than any popup-local set could be.
  */
 let wordViewedHandler: (chars: string, sentence: string) => void = () => {};
-const wordsViewedThisPopup = new Set<string>();
 let currentSentenceText = "";
 
 /**
@@ -277,27 +276,18 @@ export function showBootstrap(args: ShowBootstrapArgs): void {
   currentAnchorRect = args.anchorRect;
   currentSentenceRect = args.sentenceRect;
 
-  // Reset the per-popup view-dedup set so the very first showBootstrap
-  // for a sentence always counts as a fresh view, then immediately mark
-  // the initial word as viewed to avoid re-firing on no-op retargets to
-  // the same chars.
-  wordsViewedThisPopup.clear();
   notifyWordViewed(args.word.chars, args.sentence);
 
   positionPopup(popup, args.anchorRect, args.sentenceRect);
 }
 
 /**
- * Fires the host's word-view handler the first time a given chars
- * string appears in this popup instance. Retargeting back to a
- * previously-seen word during the same popup is a no-op so the user
- * doesn't accidentally inflate their seen count by toggling between
- * two words.
+ * Fires the host's word-view handler. The host owns dedup at the
+ * page-session scope; the popup just announces which word it's
+ * currently showing on every open / retarget / upgrade.
  */
 function notifyWordViewed(chars: string, sentence: string): void {
   if (!chars) return;
-  if (wordsViewedThisPopup.has(chars)) return;
-  wordsViewedThisPopup.add(chars);
   try {
     wordViewedHandler(chars, sentence);
   } catch (err) {
@@ -365,9 +355,9 @@ export function upgradeWord(word: {
       vocabBtn.dataset.gloss = word.gloss;
     }
   }
-  // upgradeWord can change which chars the popup points at when the
-  // LLM resegments — treat that as a fresh view of the new chars so
-  // the host can bump its count if the new chars are saved.
+  // LLM resegment may shift the popup onto different chars; announce
+  // the (possibly-new) chars so the host can bump count if applicable.
+  // Same-chars upgrades are deduped by the host.
   notifyWordViewed(word.chars, currentSentenceText);
   repositionPopup();
 }
@@ -461,9 +451,8 @@ export function retargetWord(
     tier.appendChild(gloss);
   }
   tier.appendChild(makeActionsRow(word, sentence, linkHref));
-  // Same-sentence retarget — count the new word as viewed (deduped
-  // against the per-popup set) so first-open-per-word tracking holds
-  // across in-popup word swaps.
+  // Same-sentence retarget — announce the new word so the host can
+  // bump count if applicable. Host dedup drops repeats.
   notifyWordViewed(word.chars, sentence);
   repositionPopup();
 }

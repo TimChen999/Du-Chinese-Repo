@@ -188,11 +188,10 @@ const sentenceStates = new Map<string, SentenceState>();
 const viewCountedBySentence = new Map<string, Set<string>>();
 
 /**
- * Click-popup view handler. Fires on every popup open and every same-
- * sentence retarget, deduped at the popup level so toggling between
- * two words inside one popup only fires the handler once per word.
- * Here we apply the page-session-wide dedup and forward to the SW so
- * already-saved words have their `count` bumped exactly once per
+ * Click-popup view handler. Fires on every popup open / retarget /
+ * upgrade — the popup intentionally doesn't dedup. We apply the
+ * page-session-wide (sentence, chars) dedup here and forward to the SW
+ * so already-saved words have their `count` bumped exactly once per
  * (sentence, word) pair per page session. Unsaved words are no-ops —
  * the explicit "+ Vocab" path is still the only way to create new
  * vocab entries.
