@@ -38,6 +38,20 @@ let dictionary: Map<string, CedictEntry[]> | null = null;
 /** Cached load promise so concurrent callers share the same fetch+parse. */
 let loadPromise: Promise<Map<string, CedictEntry[]>> | null = null;
 
+/**
+ * Lazy reverse index: simplified-character -> every multi-character
+ * CC-CEDICT entry whose simplified headword contains that character.
+ * Built on first call to wordsContaining(); rebuilt automatically after
+ * _resetCedictForTests.
+ *
+ * Keyed by every unique character in the simplified headword (not just
+ * the first), so it serves both "words beginning with X" and "words
+ * containing X" via the same map. Single-character entries are skipped
+ * since the WORDS view is about compound words, not the headword
+ * itself.
+ */
+let wordsByCharIndex: Map<string, CedictEntry[]> | null = null;
+
 // ─── Public API ────────────────────────────────────────────────────
 
 /**
@@ -119,6 +133,72 @@ export function findLongest(
 export function lookupExact(headword: string): CedictEntry[] | null {
   if (!dictionary || !headword) return null;
   return dictionary.get(headword) ?? null;
+}
+
+/**
+ * Returns CC-CEDICT entries whose simplified headword contains
+ * `headword` as a contiguous substring, sorted with words *beginning
+ * with* the headword first (then by length ascending, then
+ * alphabetically). Excludes the entry that matches the headword
+ * exactly.
+ *
+ * Powers the "Words" section on character/word cards. Works for both
+ * single-char (默 -> 默默, 默契, ..., 沉默, 幽默) and multi-char
+ * headwords (中国 -> 中国人, 中国话, ...; 腌制 -> [] when no entries
+ * contain it as a substring).
+ *
+ * Builds the per-char reverse index lazily on first call. The dictionary
+ * keys traditional and simplified to the same entry, so iterating
+ * `dictionary.values()` would surface each entry twice — we dedupe by
+ * iterating distinct entries via a per-call seen-set.
+ */
+export function wordsContaining(headword: string): CedictEntry[] {
+  if (!dictionary || !headword) return [];
+  if (!wordsByCharIndex) {
+    const m = new Map<string, CedictEntry[]>();
+    const seen = new Set<CedictEntry>();
+    for (const entries of dictionary.values()) {
+      for (const entry of entries) {
+        if (seen.has(entry)) continue;
+        seen.add(entry);
+        const chars = Array.from(entry.simplified);
+        if (chars.length < 2) continue;
+        // Index by every unique character. A repeated char (e.g. 上上 in
+        // 上上下下) only contributes one bucket entry per word.
+        const uniqueChars = new Set(chars);
+        for (const ch of uniqueChars) {
+          let arr = m.get(ch);
+          if (!arr) {
+            arr = [];
+            m.set(ch, arr);
+          }
+          arr.push(entry);
+        }
+      }
+    }
+    wordsByCharIndex = m;
+  }
+  const firstChar = Array.from(headword)[0];
+  if (!firstChar) return [];
+  const candidates = wordsByCharIndex.get(firstChar);
+  if (!candidates) return [];
+  const headChars = Array.from(headword);
+  const filtered =
+    headChars.length === 1
+      ? candidates.filter((e) => e.simplified !== headword)
+      : candidates.filter(
+          (e) => e.simplified !== headword && e.simplified.includes(headword),
+        );
+  filtered.sort((a, b) => {
+    const aStarts = a.simplified.startsWith(headword) ? 0 : 1;
+    const bStarts = b.simplified.startsWith(headword) ? 0 : 1;
+    if (aStarts !== bStarts) return aStarts - bStarts;
+    if (a.simplified.length !== b.simplified.length) {
+      return a.simplified.length - b.simplified.length;
+    }
+    return a.simplified.localeCompare(b.simplified, "zh");
+  });
+  return filtered;
 }
 
 // ─── Parsing ───────────────────────────────────────────────────────
@@ -542,10 +622,12 @@ function defaultResolveUrl(path: string): string {
 export function _resetCedictForTests(): void {
   dictionary = null;
   loadPromise = null;
+  wordsByCharIndex = null;
 }
 
 /** Test-only: install a pre-parsed dictionary (skips fetch). */
 export function _setCedictForTests(map: Map<string, CedictEntry[]>): void {
   dictionary = map;
   loadPromise = Promise.resolve(map);
+  wordsByCharIndex = null;
 }

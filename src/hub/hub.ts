@@ -27,13 +27,16 @@ import {
   formatPinyin,
   isDictionaryReady,
   lookupExact,
+  wordsContaining,
 } from "../shared/cedict-lookup";
 import {
+  charsContaining,
   ensureComponentsLoaded,
   isComponentsReady,
   leafComponents,
   lookupComponents,
 } from "../shared/components-lookup";
+import type { CedictEntry } from "../shared/cedict-types";
 import {
   ensurePhoneticsLoaded,
   familiesContaining,
@@ -377,6 +380,23 @@ function shuffleArray<T>(arr: T[]): T[] {
 }
 
 // ─── Vocab Card Overlay ──────────────────────────────────────────────
+
+/**
+ * One-step-back navigation chain across vocab/char-detail cards.
+ * Each card carries its parent (the frame the user came from); clicking
+ * the back arrow re-renders that parent. The chain forms an implicit
+ * navigation stack: vocab -> char -> char -> ... where back unwinds one
+ * level at a time, mirroring browser/Pleco behaviour.
+ *
+ * The leaf form (`vocab`) terminates the chain — saved vocab cards are
+ * always the bottom of the stack since they're the user's entry points
+ * (vocab list rows). A `char` frame may itself have any kind of parent,
+ * so multi-level char->char drilling preserves the full back history
+ * via parent-pointer recursion.
+ */
+type ParentRef =
+  | { kind: "vocab"; entry: VocabEntry }
+  | { kind: "char"; headword: string; parent: ParentRef | null };
 
 function dismissVocabCard(): void {
   // Stop any in-flight karaoke speech first so the audio doesn't keep
@@ -813,54 +833,213 @@ function fillCharsBreakdown(
 }
 
 /**
- * Renders the Make Me a Hanzi character-decomposition view into
- * `container` for a single-character headword. Layout:
- *   - The IDS string itself (small, monospace) — readers familiar with
- *     IDC operators (⿰⿱⿲...) get the structural shape at a glance.
- *   - One row per leaf component (IDC operators stripped, headword
- *     filtered out, deduped) with CC-CEDICT pinyin + a short gloss,
- *     styled identically to the per-character breakdown rows above.
- *   - An optional etymology hint (e.g. "A woman 女 with a son 子" for
- *     好), shown only when the upstream entry carried one.
- *
- * No-op when the components dictionary is not loaded or the headword
- * has no entry; safe to call repeatedly. Iterates by codepoint via
- * leafComponents() so any supplementary-plane parts survive.
+ * Builds a single character row identical to the per-character breakdown
+ * rows above. Looks up the char in CC-CEDICT for pinyin + a short gloss
+ * (or first modifier when an entry is purely cross-references), and
+ * wires up an optional click/keyboard handler for drill-down. Used by
+ * the COMPOSITION panel's "Found in:" sub-section to render compounds
+ * (e.g. 默 -> 嚜, 黩, 黔) consistently with everything else on the card.
  */
-function fillComponentsBreakdown(container: HTMLElement, char: string): void {
+function buildCharLookupRow(
+  ch: string,
+  onClick?: (c: string) => void,
+): HTMLDivElement {
+  const row = document.createElement("div");
+  row.className = "vocab-card-char-row";
+  if (onClick) {
+    row.classList.add("vocab-card-char-row-clickable");
+    row.tabIndex = 0;
+    row.setAttribute("role", "button");
+    row.setAttribute("aria-label", `Look up ${ch}`);
+    row.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      onClick(ch);
+    });
+    row.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" || ev.key === " ") {
+        ev.preventDefault();
+        ev.stopPropagation();
+        onClick(ch);
+      }
+    });
+  }
+
+  const han = document.createElement("span");
+  han.className = "vocab-card-char-han";
+  han.textContent = ch;
+
+  const pinyin = document.createElement("span");
+  pinyin.className = "vocab-card-char-pinyin";
+  const cedictEntry = lookupExact(ch)?.[0];
+  pinyin.textContent = cedictEntry
+    ? formatPinyin(cedictEntry.pinyinNumeric, "toneMarks")
+    : "";
+
+  const def = document.createElement("span");
+  def.className = "vocab-card-char-def";
+  let defText = cedictEntry
+    ? cedictEntry.definitions.slice(0, 2).join("; ")
+    : "";
+  if (!defText && cedictEntry && cedictEntry.modifiers.length > 0) {
+    defText = formatModifier(cedictEntry.modifiers[0], "toneMarks");
+  }
+  def.textContent = defText;
+
+  row.appendChild(han);
+  row.appendChild(pinyin);
+  if (defText) row.appendChild(document.createTextNode(" — "));
+  row.appendChild(def);
+  return row;
+}
+
+/**
+ * Renders the COMPOSITION panel for a single-character headword. Two
+ * sub-sections, both optional and rendered only when they have content:
+ *
+ *  - "Made of:" (upward) — IDS string + leaf-component rows from Make
+ *    Me a Hanzi (⿰女子 -> 女, 子), plus the radical if it wasn't already
+ *    surfaced as a leaf, plus an etymology hint when available. This is
+ *    the original Components view, just retitled.
+ *
+ *  - "Found in:" (downward, new) — characters whose decomposition lists
+ *    THIS char as a leaf. Capped at COMPOUNDS_DISPLAY_CAP rows; the
+ *    overflow count is shown as "+N more". Each row is clickable and
+ *    drills into the compound's char detail card.
+ *
+ * No-op when both sub-sections would be empty (no MMA Hanzi entry and
+ * no compounds). Safe to call repeatedly.
+ */
+const COMPOUNDS_DISPLAY_CAP = 30;
+
+function fillCompositionPanel(
+  container: HTMLElement,
+  char: string,
+  onCharClick?: (c: string) => void,
+): void {
   while (container.firstChild) container.removeChild(container.firstChild);
+
   const entry = lookupComponents(char);
-  if (!entry) return;
+  if (entry) {
+    const subhead = document.createElement("div");
+    subhead.className = "vocab-card-composition-subhead";
+    subhead.textContent = "Made of:";
+    container.appendChild(subhead);
 
-  const ids = document.createElement("div");
-  ids.className = "vocab-card-components-ids";
-  ids.textContent = entry.decomposition;
-  container.appendChild(ids);
+    const ids = document.createElement("div");
+    ids.className = "vocab-card-components-ids";
+    ids.textContent = entry.decomposition;
+    container.appendChild(ids);
 
-  const leaves = leafComponents(entry.decomposition, char);
-  for (const leaf of leaves) {
+    const leaves = leafComponents(entry.decomposition, char);
+    for (const leaf of leaves) {
+      container.appendChild(buildCharLookupRow(leaf, onCharClick));
+    }
+
+    if (entry.radical && !leaves.includes(entry.radical)) {
+      // Radical wasn't surfaced as a leaf (e.g. it's the whole character
+      // or otherwise absent from the IDS). Show it as a separate small
+      // line so the user still sees what radical the dictionary assigns.
+      const rad = document.createElement("div");
+      rad.className = "vocab-card-components-radical";
+      rad.textContent = "Radical: ";
+      const radHan = document.createElement("span");
+      radHan.className = "vocab-card-components-radical-han";
+      radHan.textContent = entry.radical;
+      rad.appendChild(radHan);
+      container.appendChild(rad);
+    }
+
+    if (entry.hint) {
+      const hint = document.createElement("div");
+      hint.className = "vocab-card-components-hint";
+      hint.textContent = entry.hint;
+      container.appendChild(hint);
+    }
+  }
+
+  // "Found in:" — reverse decomposition (chars containing this char as
+  // a leaf component). Skipped silently when the components dictionary
+  // hasn't loaded yet or this char appears in no decompositions.
+  const compounds = isComponentsReady() ? charsContaining(char) : [];
+  if (compounds.length === 0) return;
+
+  const subhead = document.createElement("div");
+  subhead.className = "vocab-card-composition-subhead";
+  subhead.textContent = "Found in:";
+  container.appendChild(subhead);
+
+  const display = compounds.slice(0, COMPOUNDS_DISPLAY_CAP);
+  for (const cmp of display) {
+    container.appendChild(buildCharLookupRow(cmp, onCharClick));
+  }
+  if (compounds.length > COMPOUNDS_DISPLAY_CAP) {
+    const more = document.createElement("div");
+    more.className = "vocab-card-composition-more";
+    more.textContent = `+ ${compounds.length - COMPOUNDS_DISPLAY_CAP} more`;
+    container.appendChild(more);
+  }
+}
+
+/**
+ * Renders the WORDS panel — multi-character CC-CEDICT entries whose
+ * simplified headword contains `headword` as a contiguous substring,
+ * sorted with words *beginning with* `headword` first (per
+ * wordsContaining()'s ordering). Capped at WORDS_DISPLAY_CAP. Each row
+ * shows the headword + pinyin + first 2 glosses, matching the visual
+ * rhythm of the per-character breakdown rows.
+ *
+ * No-op when CC-CEDICT isn't loaded yet or the headword has no
+ * containing entries. Safe to call repeatedly.
+ */
+const WORDS_DISPLAY_CAP = 30;
+
+function fillWordsPanel(
+  container: HTMLElement,
+  headword: string,
+  onWordClick?: (chars: string) => void,
+): void {
+  while (container.firstChild) container.removeChild(container.firstChild);
+  if (!isDictionaryReady()) return;
+
+  const entries = wordsContaining(headword);
+  if (entries.length === 0) return;
+
+  const display = entries.slice(0, WORDS_DISPLAY_CAP);
+  for (const entry of display) {
     const row = document.createElement("div");
-    row.className = "vocab-card-char-row";
+    row.className = "vocab-card-words-row";
+    if (onWordClick) {
+      row.classList.add("vocab-card-words-row-clickable");
+      row.tabIndex = 0;
+      row.setAttribute("role", "button");
+      row.setAttribute("aria-label", `Look up ${entry.simplified}`);
+      const target = entry.simplified;
+      row.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        onWordClick(target);
+      });
+      row.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter" || ev.key === " ") {
+          ev.preventDefault();
+          ev.stopPropagation();
+          onWordClick(target);
+        }
+      });
+    }
 
     const han = document.createElement("span");
-    han.className = "vocab-card-char-han";
-    han.textContent = leaf;
+    han.className = "vocab-card-words-han";
+    han.textContent = entry.simplified;
 
     const pinyin = document.createElement("span");
-    pinyin.className = "vocab-card-char-pinyin";
-    const cedictEntries = lookupExact(leaf);
-    const cedictEntry = cedictEntries?.[0];
-    pinyin.textContent = cedictEntry
-      ? formatPinyin(cedictEntry.pinyinNumeric, "toneMarks")
-      : "";
+    pinyin.className = "vocab-card-words-pinyin";
+    pinyin.textContent = formatPinyin(entry.pinyinNumeric, "toneMarks");
 
     const def = document.createElement("span");
-    def.className = "vocab-card-char-def";
-    let defText = cedictEntry
-      ? cedictEntry.definitions.slice(0, 2).join("; ")
-      : "";
-    if (!defText && cedictEntry && cedictEntry.modifiers.length > 0) {
-      defText = formatModifier(cedictEntry.modifiers[0], "toneMarks");
+    def.className = "vocab-card-words-def";
+    let defText = entry.definitions.slice(0, 2).join("; ");
+    if (!defText && entry.modifiers.length > 0) {
+      defText = formatModifier(entry.modifiers[0], "toneMarks");
     }
     def.textContent = defText;
 
@@ -870,26 +1049,11 @@ function fillComponentsBreakdown(container: HTMLElement, char: string): void {
     row.appendChild(def);
     container.appendChild(row);
   }
-
-  if (entry.radical && !leaves.includes(entry.radical)) {
-    // Radical wasn't surfaced as a leaf (e.g. it's the whole character
-    // or otherwise absent from the IDS). Show it as a separate small
-    // line so the user still sees what radical the dictionary assigns.
-    const rad = document.createElement("div");
-    rad.className = "vocab-card-components-radical";
-    rad.textContent = "Radical: ";
-    const radHan = document.createElement("span");
-    radHan.className = "vocab-card-components-radical-han";
-    radHan.textContent = entry.radical;
-    rad.appendChild(radHan);
-    container.appendChild(rad);
-  }
-
-  if (entry.hint) {
-    const hint = document.createElement("div");
-    hint.className = "vocab-card-components-hint";
-    hint.textContent = entry.hint;
-    container.appendChild(hint);
+  if (entries.length > WORDS_DISPLAY_CAP) {
+    const more = document.createElement("div");
+    more.className = "vocab-card-composition-more";
+    more.textContent = `+ ${entries.length - WORDS_DISPLAY_CAP} more`;
+    container.appendChild(more);
   }
 }
 
@@ -1036,7 +1200,7 @@ async function showVocabCard(
   // here). Routed through the parent vocab card so the small click-flow
   // popup stays out of this surface.
   const onCharRowClick = (ch: string) => {
-    void showCharDetailCard(ch, entry, els);
+    void showCharDetailCard(ch, { kind: "vocab", entry }, els);
   };
 
   charsToggle.addEventListener("click", () => {
@@ -1074,67 +1238,138 @@ async function showVocabCard(
   }
   refreshCharsAffordance();
 
-  // Components section (Make Me a Hanzi). Single-character words only:
-  // multi-char entries already get a per-character breakdown above, and
-  // adding a parallel decomposition list there would duplicate rows for
-  // little gain. Hidden when the headword has no decomposition entry
-  // (rare CJK, the dictionary covers ~9.5k characters).
-  const componentsSection = document.createElement("div");
-  componentsSection.className = "vocab-card-components-section";
-  componentsSection.hidden = true;
+  // Composition section (Make Me a Hanzi, both directions).
+  // Single-character words only: multi-char entries already get a
+  // per-character breakdown above, and adding a parallel decomposition
+  // list there would duplicate rows for little gain. The panel renders
+  // two sub-sections — "Made of:" (this char's IDS leaves) and
+  // "Found in:" (chars whose IDS lists this char as a leaf, capped). The
+  // section is hidden only when both sub-sections would be empty.
+  const compositionSection = document.createElement("div");
+  compositionSection.className = "vocab-card-components-section";
+  compositionSection.hidden = true;
 
-  const componentsToggle = document.createElement("button");
-  componentsToggle.type = "button";
-  componentsToggle.className = "vocab-card-components-toggle";
-  componentsToggle.setAttribute("aria-expanded", "false");
+  const compositionToggle = document.createElement("button");
+  compositionToggle.type = "button";
+  compositionToggle.className = "vocab-card-components-toggle";
+  compositionToggle.setAttribute("aria-expanded", "false");
 
-  const componentsLabel = document.createElement("span");
-  componentsLabel.className = "vocab-card-components-toggle-label";
-  componentsLabel.textContent = "Components";
+  const compositionLabel = document.createElement("span");
+  compositionLabel.className = "vocab-card-components-toggle-label";
+  compositionLabel.textContent = "Composition";
 
-  const componentsIcon = document.createElement("span");
-  componentsIcon.className = "vocab-card-components-toggle-icon";
-  componentsIcon.setAttribute("aria-hidden", "true");
-  componentsIcon.textContent = "˅";
+  const compositionIcon = document.createElement("span");
+  compositionIcon.className = "vocab-card-components-toggle-icon";
+  compositionIcon.setAttribute("aria-hidden", "true");
+  compositionIcon.textContent = "˅";
 
-  componentsToggle.append(componentsLabel, componentsIcon);
+  compositionToggle.append(compositionLabel, compositionIcon);
 
-  const componentsPanel = document.createElement("div");
-  componentsPanel.className = "vocab-card-components-panel";
-  componentsPanel.hidden = true;
+  const compositionPanel = document.createElement("div");
+  compositionPanel.className = "vocab-card-components-panel";
+  compositionPanel.hidden = true;
 
-  componentsToggle.addEventListener("click", () => {
-    if (componentsPanel.hidden) {
-      fillComponentsBreakdown(componentsPanel, entry.chars);
-      componentsPanel.hidden = false;
-      componentsToggle.setAttribute("aria-expanded", "true");
+  compositionToggle.addEventListener("click", () => {
+    if (compositionPanel.hidden) {
+      fillCompositionPanel(compositionPanel, entry.chars, onCharRowClick);
+      compositionPanel.hidden = false;
+      compositionToggle.setAttribute("aria-expanded", "true");
     } else {
-      componentsPanel.hidden = true;
-      componentsToggle.setAttribute("aria-expanded", "false");
+      compositionPanel.hidden = true;
+      compositionToggle.setAttribute("aria-expanded", "false");
     }
   });
 
-  componentsSection.append(componentsToggle, componentsPanel);
+  compositionSection.append(compositionToggle, compositionPanel);
 
-  function refreshComponentsAffordance(): void {
+  function refreshCompositionAffordance(): void {
     const charList = Array.from(entry.chars);
     if (charList.length !== 1) {
-      componentsSection.hidden = true;
-      componentsPanel.hidden = true;
+      compositionSection.hidden = true;
+      compositionPanel.hidden = true;
       return;
     }
-    const ce = lookupComponents(entry.chars);
-    if (!ce) {
-      componentsSection.hidden = true;
-      componentsPanel.hidden = true;
+    const hasMadeOf = lookupComponents(entry.chars) !== null;
+    const hasFoundIn =
+      isComponentsReady() && charsContaining(entry.chars).length > 0;
+    if (!hasMadeOf && !hasFoundIn) {
+      compositionSection.hidden = true;
+      compositionPanel.hidden = true;
       return;
     }
-    componentsSection.hidden = false;
-    if (!componentsPanel.hidden) {
-      fillComponentsBreakdown(componentsPanel, entry.chars);
+    compositionSection.hidden = false;
+    if (!compositionPanel.hidden) {
+      fillCompositionPanel(compositionPanel, entry.chars, onCharRowClick);
     }
   }
-  refreshComponentsAffordance();
+  refreshCompositionAffordance();
+
+  // Words section — multi-char CC-CEDICT entries containing this
+  // headword as a substring. Sorted beginning-first inside the panel
+  // (默 -> 默默, 默契, 默认, ..., 沉默, 幽默). Hidden when CC-CEDICT
+  // returns no matches (e.g. rare/long headwords like 腌制).
+  const wordsSection = document.createElement("div");
+  wordsSection.className = "vocab-card-words-section";
+  wordsSection.hidden = true;
+
+  const wordsToggle = document.createElement("button");
+  wordsToggle.type = "button";
+  wordsToggle.className = "vocab-card-words-toggle";
+  wordsToggle.setAttribute("aria-expanded", "false");
+
+  const wordsLabel = document.createElement("span");
+  wordsLabel.className = "vocab-card-words-toggle-label";
+  wordsLabel.textContent = "Words";
+
+  const wordsIcon = document.createElement("span");
+  wordsIcon.className = "vocab-card-words-toggle-icon";
+  wordsIcon.setAttribute("aria-hidden", "true");
+  wordsIcon.textContent = "˅";
+
+  wordsToggle.append(wordsLabel, wordsIcon);
+
+  const wordsPanel = document.createElement("div");
+  wordsPanel.className = "vocab-card-words-panel";
+  wordsPanel.hidden = true;
+
+  // Words rows drill into a fresh char detail card for the clicked
+  // entry. showCharDetailCard handles multi-char input gracefully —
+  // single-char-only sections (composition, family) self-hide and a
+  // CHARACTERS breakdown surfaces in their place. Parent is the saved
+  // vocab card so the drilled-in word's back arrow returns here.
+  const onWordRowClick = (chars: string) => {
+    showCharDetailCard(chars, { kind: "vocab", entry }, els);
+  };
+
+  wordsToggle.addEventListener("click", () => {
+    if (wordsPanel.hidden) {
+      fillWordsPanel(wordsPanel, entry.chars, onWordRowClick);
+      wordsPanel.hidden = false;
+      wordsToggle.setAttribute("aria-expanded", "true");
+    } else {
+      wordsPanel.hidden = true;
+      wordsToggle.setAttribute("aria-expanded", "false");
+    }
+  });
+
+  wordsSection.append(wordsToggle, wordsPanel);
+
+  function refreshWordsAffordance(): void {
+    if (!isDictionaryReady()) {
+      wordsSection.hidden = true;
+      wordsPanel.hidden = true;
+      return;
+    }
+    const matches = wordsContaining(entry.chars);
+    if (matches.length === 0) {
+      wordsSection.hidden = true;
+      wordsPanel.hidden = true;
+      return;
+    }
+    wordsSection.hidden = false;
+    if (!wordsPanel.hidden) fillWordsPanel(wordsPanel, entry.chars, onWordRowClick);
+  }
+  refreshWordsAffordance();
 
   if (!isDictionaryReady()) {
     void ensureDictionaryLoaded()
@@ -1142,10 +1377,11 @@ async function showVocabCard(
         if (!document.body.contains(card)) return;
         refreshDetailsAffordance();
         refreshCharsAffordance();
-        // Components rows reuse CC-CEDICT pinyin/gloss; refresh once
-        // CEDICT lands so an open panel picks up the data instead of
-        // showing bare glyphs.
-        refreshComponentsAffordance();
+        // Composition + Words rows reuse CC-CEDICT pinyin/gloss; refresh
+        // once CEDICT lands so an open panel picks up the data instead of
+        // showing bare glyphs / staying hidden.
+        refreshCompositionAffordance();
+        refreshWordsAffordance();
       })
       .catch(() => {
         /* warning already logged at init */
@@ -1156,7 +1392,7 @@ async function showVocabCard(
     void ensureComponentsLoaded()
       .then(() => {
         if (!document.body.contains(card)) return;
-        refreshComponentsAffordance();
+        refreshCompositionAffordance();
       })
       .catch(() => {
         /* warning already logged at init */
@@ -1277,8 +1513,9 @@ async function showVocabCard(
     bucketRow,
     meta,
     charsSection,
-    componentsSection,
+    compositionSection,
     familySection,
+    wordsSection,
     actions,
   );
 
@@ -1341,7 +1578,7 @@ export function showStandaloneCharDetailCard(ch: string): void {
 
 function showCharDetailCard(
   ch: string,
-  parentEntry: VocabEntry | null,
+  parent: ParentRef | null,
   els: ReturnType<typeof getElements>,
 ): void {
   dismissVocabCard();
@@ -1353,19 +1590,27 @@ function showCharDetailCard(
   const card = document.createElement("div");
   card.className = "vocab-card vocab-card-char-detail";
 
-  // Back arrow (top-left) -- only when there's a parent vocab card to
-  // return to. Standalone openings (e.g. from the Families tab) skip
-  // the back arrow because dismissing the overlay leaves the user on
-  // whatever surface lay underneath.
+  // Back arrow (top-left) -- shown whenever the user drilled in from
+  // somewhere they can return to. Goes ONE level back, not all the way
+  // to the root: vocab -> charA -> charB -> charC, back from charC
+  // returns to charB (with its own back arrow still pointing at charA),
+  // not to the original vocab card. Standalone openings (e.g. from the
+  // Families tab) pass parent=null and have no back arrow.
   let backBtn: HTMLButtonElement | null = null;
-  if (parentEntry) {
+  if (parent) {
+    const parentLabel =
+      parent.kind === "vocab" ? parent.entry.chars : parent.headword;
     backBtn = document.createElement("button");
     backBtn.type = "button";
     backBtn.className = "vocab-card-back";
-    backBtn.setAttribute("aria-label", `Back to ${parentEntry.chars}`);
+    backBtn.setAttribute("aria-label", `Back to ${parentLabel}`);
     backBtn.textContent = "←"; // left arrow
     backBtn.addEventListener("click", () => {
-      void showVocabCard(parentEntry, els);
+      if (parent.kind === "vocab") {
+        void showVocabCard(parent.entry, els);
+      } else {
+        showCharDetailCard(parent.headword, parent.parent, els);
+      }
     });
   }
 
@@ -1467,57 +1712,197 @@ function showCharDetailCard(
   }
   refreshDetailsAffordance();
 
-  // Components dropdown (Make Me a Hanzi). Always single-character here
-  // by construction, so we don't need the per-length guard the parent
-  // card uses.
-  const componentsSection = document.createElement("div");
-  componentsSection.className = "vocab-card-components-section";
-  componentsSection.hidden = true;
+  // Single-char drill-down callback shared by the Characters breakdown
+  // (multi-char only) and the Composition panel's clickable rows. The
+  // child card receives a parent ref pointing at THIS card so its back
+  // arrow returns one step (to here), not all the way to the root.
+  const onCompoundClick = (compoundCh: string) => {
+    showCharDetailCard(
+      compoundCh,
+      { kind: "char", headword: ch, parent },
+      els,
+    );
+  };
 
-  const componentsToggle = document.createElement("button");
-  componentsToggle.type = "button";
-  componentsToggle.className = "vocab-card-components-toggle";
-  componentsToggle.setAttribute("aria-expanded", "false");
+  // Characters section — only meaningful when the headword is
+  // multi-char (e.g. drilled in from a word row). Mirrors the parent
+  // vocab card's per-character breakdown so the user can drill from
+  // 权威 down to 权 / 威 and back. Auto-hides for single-char input.
+  const charsSection = document.createElement("div");
+  charsSection.className = "vocab-card-chars-section";
+  charsSection.hidden = true;
 
-  const componentsLabel = document.createElement("span");
-  componentsLabel.className = "vocab-card-components-toggle-label";
-  componentsLabel.textContent = "Components";
+  const charsToggle = document.createElement("button");
+  charsToggle.type = "button";
+  charsToggle.className = "vocab-card-chars-toggle";
+  charsToggle.setAttribute("aria-expanded", "false");
 
-  const componentsIcon = document.createElement("span");
-  componentsIcon.className = "vocab-card-components-toggle-icon";
-  componentsIcon.setAttribute("aria-hidden", "true");
-  componentsIcon.textContent = "˅";
+  const charsToggleLabel = document.createElement("span");
+  charsToggleLabel.className = "vocab-card-chars-toggle-label";
+  charsToggleLabel.textContent = "Characters";
 
-  componentsToggle.append(componentsLabel, componentsIcon);
+  const charsToggleIcon = document.createElement("span");
+  charsToggleIcon.className = "vocab-card-chars-toggle-icon";
+  charsToggleIcon.setAttribute("aria-hidden", "true");
+  charsToggleIcon.textContent = "˅";
 
-  const componentsPanel = document.createElement("div");
-  componentsPanel.className = "vocab-card-components-panel";
-  componentsPanel.hidden = true;
+  charsToggle.append(charsToggleLabel, charsToggleIcon);
 
-  componentsToggle.addEventListener("click", () => {
-    if (componentsPanel.hidden) {
-      fillComponentsBreakdown(componentsPanel, ch);
-      componentsPanel.hidden = false;
-      componentsToggle.setAttribute("aria-expanded", "true");
+  const charsPanel = document.createElement("div");
+  charsPanel.className = "vocab-card-chars-panel";
+  charsPanel.hidden = true;
+
+  charsToggle.addEventListener("click", () => {
+    if (charsPanel.hidden) {
+      fillCharsBreakdown(charsPanel, ch, onCompoundClick);
+      charsPanel.hidden = false;
+      charsToggle.setAttribute("aria-expanded", "true");
     } else {
-      componentsPanel.hidden = true;
-      componentsToggle.setAttribute("aria-expanded", "false");
+      charsPanel.hidden = true;
+      charsToggle.setAttribute("aria-expanded", "false");
     }
   });
 
-  componentsSection.append(componentsToggle, componentsPanel);
+  charsSection.append(charsToggle, charsPanel);
 
-  function refreshComponentsAffordance(): void {
-    const ce = lookupComponents(ch);
-    if (!ce) {
-      componentsSection.hidden = true;
-      componentsPanel.hidden = true;
+  function refreshCharsAffordance(): void {
+    const charList = Array.from(ch);
+    if (charList.length < 2) {
+      charsSection.hidden = true;
+      charsPanel.hidden = true;
       return;
     }
-    componentsSection.hidden = false;
-    if (!componentsPanel.hidden) fillComponentsBreakdown(componentsPanel, ch);
+    const anyHasEntry = charList.some(
+      (c) => (lookupExact(c)?.length ?? 0) > 0,
+    );
+    if (!anyHasEntry) {
+      charsSection.hidden = true;
+      charsPanel.hidden = true;
+      return;
+    }
+    charsSection.hidden = false;
+    if (!charsPanel.hidden) fillCharsBreakdown(charsPanel, ch, onCompoundClick);
   }
-  refreshComponentsAffordance();
+  refreshCharsAffordance();
+
+  const compositionSection = document.createElement("div");
+  compositionSection.className = "vocab-card-components-section";
+  compositionSection.hidden = true;
+
+  const compositionToggle = document.createElement("button");
+  compositionToggle.type = "button";
+  compositionToggle.className = "vocab-card-components-toggle";
+  compositionToggle.setAttribute("aria-expanded", "false");
+
+  const compositionLabel = document.createElement("span");
+  compositionLabel.className = "vocab-card-components-toggle-label";
+  compositionLabel.textContent = "Composition";
+
+  const compositionIcon = document.createElement("span");
+  compositionIcon.className = "vocab-card-components-toggle-icon";
+  compositionIcon.setAttribute("aria-hidden", "true");
+  compositionIcon.textContent = "˅";
+
+  compositionToggle.append(compositionLabel, compositionIcon);
+
+  const compositionPanel = document.createElement("div");
+  compositionPanel.className = "vocab-card-components-panel";
+  compositionPanel.hidden = true;
+
+  compositionToggle.addEventListener("click", () => {
+    if (compositionPanel.hidden) {
+      fillCompositionPanel(compositionPanel, ch, onCompoundClick);
+      compositionPanel.hidden = false;
+      compositionToggle.setAttribute("aria-expanded", "true");
+    } else {
+      compositionPanel.hidden = true;
+      compositionToggle.setAttribute("aria-expanded", "false");
+    }
+  });
+
+  compositionSection.append(compositionToggle, compositionPanel);
+
+  function refreshCompositionAffordance(): void {
+    const hasMadeOf = lookupComponents(ch) !== null;
+    const hasFoundIn = isComponentsReady() && charsContaining(ch).length > 0;
+    if (!hasMadeOf && !hasFoundIn) {
+      compositionSection.hidden = true;
+      compositionPanel.hidden = true;
+      return;
+    }
+    compositionSection.hidden = false;
+    if (!compositionPanel.hidden) {
+      fillCompositionPanel(compositionPanel, ch, onCompoundClick);
+    }
+  }
+  refreshCompositionAffordance();
+
+  // Words dropdown — multi-char CC-CEDICT entries containing this char,
+  // sorted beginning-first inside the panel. Hidden when no matches.
+  const wordsSection = document.createElement("div");
+  wordsSection.className = "vocab-card-words-section";
+  wordsSection.hidden = true;
+
+  const wordsToggle = document.createElement("button");
+  wordsToggle.type = "button";
+  wordsToggle.className = "vocab-card-words-toggle";
+  wordsToggle.setAttribute("aria-expanded", "false");
+
+  const wordsLabel = document.createElement("span");
+  wordsLabel.className = "vocab-card-words-toggle-label";
+  wordsLabel.textContent = "Words";
+
+  const wordsIcon = document.createElement("span");
+  wordsIcon.className = "vocab-card-words-toggle-icon";
+  wordsIcon.setAttribute("aria-hidden", "true");
+  wordsIcon.textContent = "˅";
+
+  wordsToggle.append(wordsLabel, wordsIcon);
+
+  const wordsPanel = document.createElement("div");
+  wordsPanel.className = "vocab-card-words-panel";
+  wordsPanel.hidden = true;
+
+  // Recursive drill: clicking a word row opens another char-detail
+  // card for that word, with THIS card's frame as its parent so back
+  // unwinds one level at a time across the chain.
+  const onWordRowClick = (chars: string) => {
+    showCharDetailCard(
+      chars,
+      { kind: "char", headword: ch, parent },
+      els,
+    );
+  };
+
+  wordsToggle.addEventListener("click", () => {
+    if (wordsPanel.hidden) {
+      fillWordsPanel(wordsPanel, ch, onWordRowClick);
+      wordsPanel.hidden = false;
+      wordsToggle.setAttribute("aria-expanded", "true");
+    } else {
+      wordsPanel.hidden = true;
+      wordsToggle.setAttribute("aria-expanded", "false");
+    }
+  });
+
+  wordsSection.append(wordsToggle, wordsPanel);
+
+  function refreshWordsAffordance(): void {
+    if (!isDictionaryReady()) {
+      wordsSection.hidden = true;
+      wordsPanel.hidden = true;
+      return;
+    }
+    const matches = wordsContaining(ch);
+    if (matches.length === 0) {
+      wordsSection.hidden = true;
+      wordsPanel.hidden = true;
+      return;
+    }
+    wordsSection.hidden = false;
+    if (!wordsPanel.hidden) fillWordsPanel(wordsPanel, ch, onWordRowClick);
+  }
+  refreshWordsAffordance();
 
   // Late-arriving dictionaries: when CEDICT or the components data
   // lands after the card mounted, refresh the affordances in place so
@@ -1528,7 +1913,9 @@ function showCharDetailCard(
         if (!document.body.contains(card)) return;
         refreshHeadFromCedict();
         refreshDetailsAffordance();
-        refreshComponentsAffordance();
+        refreshCharsAffordance();
+        refreshCompositionAffordance();
+        refreshWordsAffordance();
       })
       .catch(() => {
         /* warning already logged at init */
@@ -1538,7 +1925,7 @@ function showCharDetailCard(
     void ensureComponentsLoaded()
       .then(() => {
         if (!document.body.contains(card)) return;
-        refreshComponentsAffordance();
+        refreshCompositionAffordance();
       })
       .catch(() => {
         /* warning already logged at init */
@@ -1577,8 +1964,10 @@ function showCharDetailCard(
     pinyin,
     def,
     details,
-    componentsSection,
+    charsSection,
+    compositionSection,
     familySection,
+    wordsSection,
   );
 
   overlay.appendChild(card);

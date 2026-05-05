@@ -1078,6 +1078,34 @@ button.vocab-bucket-summary-chip.active {
   font-weight: 600;
 }
 
+/* Sub-header inside the COMPOSITION panel ("Made of:" / "Found in:").
+ * Smaller and lighter than the section header so the two halves read
+ * as siblings inside the same drawer. The first sub-header sits flush
+ * with the panel top; subsequent ones get a small top margin so the
+ * "Found in:" group visually separates from the "Made of:" content. */
+.vocab-card-composition-subhead {
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b7280;
+  letter-spacing: 0.04em;
+  margin-top: 8px;
+  margin-bottom: 2px;
+}
+
+.vocab-card-composition-subhead:first-child {
+  margin-top: 0;
+}
+
+/* Truncation footer for "Found in:" / "Words" panels when the list
+ * exceeds the display cap (e.g. "+ 47 more"). Italic + dim so it reads
+ * as a count, not another row. */
+.vocab-card-composition-more {
+  font-size: 12px;
+  font-style: italic;
+  color: #9ca3af;
+  margin-top: 4px;
+}
+
 /* Etymology blurb from upstream (e.g. "A woman 女 with a son 子" for 好).
  * Italic + dim so it reads as supplementary context, not a definition. */
 .vocab-card-components-hint {
@@ -1086,6 +1114,101 @@ button.vocab-bucket-summary-chip.active {
   color: #6b7280;
   margin-top: 4px;
   line-height: 1.5;
+}
+
+/* Words section — multi-character CC-CEDICT entries containing the
+ * headword. Visually identical pattern to the Components / Characters
+ * sections (top divider, uppercase label, chevron). Inner rows mirror
+ * the per-character breakdown rhythm but render the full multi-char
+ * headword instead of a single glyph. */
+.vocab-card-words-section {
+  margin: 0 0 16px;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+}
+
+.vocab-card-words-section[hidden] { display: none; }
+
+.vocab-card-words-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 12px 0 10px;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  color: #6b7280;
+}
+
+.vocab-card-words-toggle:hover { color: #4338ca; }
+
+.vocab-card-words-toggle-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.vocab-card-words-toggle-icon {
+  font-size: 12px;
+  line-height: 1;
+  transition: transform 120ms ease;
+}
+
+.vocab-card-words-toggle[aria-expanded="true"] .vocab-card-words-toggle-icon {
+  transform: rotate(180deg);
+}
+
+.vocab-card-words-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 6px;
+}
+
+.vocab-card-words-panel[hidden] { display: none; }
+
+.vocab-card-words-row {
+  font-size: 13px;
+  color: #374151;
+  line-height: 1.5;
+  word-wrap: break-word;
+}
+
+/* Clickable variant — same hover/focus treatment as char rows so the
+ * affordance feels uniform across COMPOSITION (single-char drill) and
+ * WORDS (multi-char drill). */
+.vocab-card-words-row-clickable {
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 2px 6px;
+  margin: 0 -6px;
+  transition: background-color 120ms ease;
+}
+
+.vocab-card-words-row-clickable:hover,
+.vocab-card-words-row-clickable:focus-visible {
+  background: #f3f4f6;
+  outline: none;
+}
+
+.vocab-card-words-han {
+  font-weight: 600;
+  margin-right: 6px;
+}
+
+.vocab-card-words-pinyin {
+  font-weight: 600;
+  color: #6b7280;
+  margin-right: 4px;
+}
+
+.vocab-card-words-def {
+  color: #6b7280;
 }
 
 body[data-theme="dark"] .vocab-card-reading { color: #d1d5db; }
@@ -1101,6 +1224,14 @@ body[data-theme="dark"] .vocab-card-components-toggle:hover { color: #a5b4fc; }
 body[data-theme="dark"] .vocab-card-components-ids { color: #9ca3af; }
 body[data-theme="dark"] .vocab-card-components-radical { color: #9ca3af; }
 body[data-theme="dark"] .vocab-card-components-hint { color: #9ca3af; }
+body[data-theme="dark"] .vocab-card-composition-subhead { color: #9ca3af; }
+body[data-theme="dark"] .vocab-card-composition-more { color: #6b7280; }
+body[data-theme="dark"] .vocab-card-words-section { border-top-color: #374151; }
+body[data-theme="dark"] .vocab-card-words-toggle { color: #9ca3af; }
+body[data-theme="dark"] .vocab-card-words-toggle:hover { color: #a5b4fc; }
+body[data-theme="dark"] .vocab-card-words-row { color: #d1d5db; }
+body[data-theme="dark"] .vocab-card-words-pinyin { color: #9ca3af; }
+body[data-theme="dark"] .vocab-card-words-def { color: #9ca3af; }
 body[data-theme="dark"] .vocab-card-def { color: #e5e7eb; }
 body[data-theme="dark"] .vocab-card-def-toggle { color: #6b7280; }
 body[data-theme="dark"] .vocab-card-def-toggle:hover { color: #a5b4fc; }
@@ -1118,6 +1249,14 @@ body[data-theme="sepia"] .vocab-card-components-toggle:hover { color: #b8860b; }
 body[data-theme="sepia"] .vocab-card-components-ids { color: #8b7355; }
 body[data-theme="sepia"] .vocab-card-components-radical { color: #8b7355; }
 body[data-theme="sepia"] .vocab-card-components-hint { color: #8b7355; }
+body[data-theme="sepia"] .vocab-card-composition-subhead { color: #8b7355; }
+body[data-theme="sepia"] .vocab-card-composition-more { color: #a89378; }
+body[data-theme="sepia"] .vocab-card-words-section { border-top-color: #d4c8ab; }
+body[data-theme="sepia"] .vocab-card-words-toggle { color: #8b7355; }
+body[data-theme="sepia"] .vocab-card-words-toggle:hover { color: #b8860b; }
+body[data-theme="sepia"] .vocab-card-words-row { color: #5c4b37; }
+body[data-theme="sepia"] .vocab-card-words-pinyin { color: #8b7355; }
+body[data-theme="sepia"] .vocab-card-words-def { color: #8b7355; }
 body[data-theme="sepia"] .vocab-card-def { color: #5c4b37; }
 body[data-theme="sepia"] .vocab-card-def-toggle { color: #8b7355; }
 body[data-theme="sepia"] .vocab-card-def-toggle:hover { color: #b8860b; }
@@ -1136,6 +1275,14 @@ body[data-theme="sepia"] .vocab-card-def-toggle:hover { color: #b8860b; }
   body[data-theme="auto"] .vocab-card-components-ids { color: #9ca3af; }
   body[data-theme="auto"] .vocab-card-components-radical { color: #9ca3af; }
   body[data-theme="auto"] .vocab-card-components-hint { color: #9ca3af; }
+  body[data-theme="auto"] .vocab-card-composition-subhead { color: #9ca3af; }
+  body[data-theme="auto"] .vocab-card-composition-more { color: #6b7280; }
+  body[data-theme="auto"] .vocab-card-words-section { border-top-color: #374151; }
+  body[data-theme="auto"] .vocab-card-words-toggle { color: #9ca3af; }
+  body[data-theme="auto"] .vocab-card-words-toggle:hover { color: #a5b4fc; }
+  body[data-theme="auto"] .vocab-card-words-row { color: #d1d5db; }
+  body[data-theme="auto"] .vocab-card-words-pinyin { color: #9ca3af; }
+  body[data-theme="auto"] .vocab-card-words-def { color: #9ca3af; }
   body[data-theme="auto"] .vocab-card-def { color: #e5e7eb; }
   body[data-theme="auto"] .vocab-card-def-toggle { color: #6b7280; }
   body[data-theme="auto"] .vocab-card-def-toggle:hover { color: #a5b4fc; }
@@ -2206,7 +2353,9 @@ body[data-theme="dark"] .vocab-card-back:hover {
 }
 
 body[data-theme="dark"] .vocab-card-char-row-clickable:hover,
-body[data-theme="dark"] .vocab-card-char-row-clickable:focus-visible {
+body[data-theme="dark"] .vocab-card-char-row-clickable:focus-visible,
+body[data-theme="dark"] .vocab-card-words-row-clickable:hover,
+body[data-theme="dark"] .vocab-card-words-row-clickable:focus-visible {
   background: #374151;
 }
 
@@ -2608,7 +2757,9 @@ body[data-theme="dark"] .hub-tab-content::-webkit-scrollbar-thumb:hover {
   body[data-theme="auto"] .vocab-card-close:hover,
   body[data-theme="auto"] .vocab-card-back:hover { color: #d1d5db; background: #374151; }
   body[data-theme="auto"] .vocab-card-char-row-clickable:hover,
-  body[data-theme="auto"] .vocab-card-char-row-clickable:focus-visible { background: #374151; }
+  body[data-theme="auto"] .vocab-card-char-row-clickable:focus-visible,
+  body[data-theme="auto"] .vocab-card-words-row-clickable:hover,
+  body[data-theme="auto"] .vocab-card-words-row-clickable:focus-visible { background: #374151; }
   body[data-theme="auto"] .vocab-card-chars { color: #f3f4f6; }
   body[data-theme="auto"] .vocab-card-pinyin { color: #9ca3af; }
   body[data-theme="auto"] .vocab-card-def { color: #d1d5db; }
@@ -2848,7 +2999,9 @@ body[data-theme="sepia"] .vocab-card-back { color: #8b7355; }
 body[data-theme="sepia"] .vocab-card-close:hover,
 body[data-theme="sepia"] .vocab-card-back:hover { color: #5c4b37; background: #ede4cf; }
 body[data-theme="sepia"] .vocab-card-char-row-clickable:hover,
-body[data-theme="sepia"] .vocab-card-char-row-clickable:focus-visible { background: #ede4cf; }
+body[data-theme="sepia"] .vocab-card-char-row-clickable:focus-visible,
+body[data-theme="sepia"] .vocab-card-words-row-clickable:hover,
+body[data-theme="sepia"] .vocab-card-words-row-clickable:focus-visible { background: #ede4cf; }
 body[data-theme="sepia"] .vocab-card-chars { color: #5c4b37; }
 body[data-theme="sepia"] .vocab-card-pinyin { color: #8b7355; }
 body[data-theme="sepia"] .vocab-card-def { color: #5c4b37; }
@@ -3627,6 +3780,13 @@ button.fm-member-row {
   margin-top: 4px;
   border-top: 1px solid #e5e7eb;
 }
+
+/* Explicit [hidden] override — `display: flex` above otherwise wins
+ * over the UA stylesheet's `[hidden] { display: none }`, leaving an
+ * empty bordered box visible between sibling sections (e.g. between
+ * CHARACTERS and WORDS on multi-char cards where the family section
+ * is gated off). */
+.vocab-card-family-section[hidden] { display: none; }
 
 .vocab-card-family-heading {
   font-size: 11px;
