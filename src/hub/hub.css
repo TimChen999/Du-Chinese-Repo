@@ -3784,8 +3784,7 @@ button.fm-member-row {
   gap: 12px;
 }
 
-.fm-study-need-btn,
-.fm-study-got-btn {
+.fm-study-reveal-btn {
   font: inherit;
   font-size: 14px;
   font-weight: 600;
@@ -3793,26 +3792,48 @@ button.fm-member-row {
   border-radius: 8px;
   cursor: pointer;
   border: 1px solid transparent;
-  transition: background 0.1s, border-color 0.1s;
+  background: #6366f1;
+  color: #ffffff;
+  transition: background 0.1s;
+}
+
+.fm-study-reveal-btn:hover {
+  background: #4f46e5;
+}
+
+/* Grade icons mirror the regular Flashcards tab so the practice
+ * surface uses the same visual vocabulary across the app. */
+.fm-study-need-btn,
+.fm-study-got-btn {
+  padding: 10px 28px;
+  border-radius: 6px;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  border: 1px solid transparent;
 }
 
 .fm-study-need-btn {
-  background: #fef3c7;
-  color: #92400e;
-  border-color: #fde68a;
+  background: #fef2f2;
+  color: #dc2626;
+  border-color: #fca5a5;
 }
 
 .fm-study-need-btn:hover {
-  background: #fde68a;
+  background: #fee2e2;
+  border-color: #f87171;
 }
 
 .fm-study-got-btn {
-  background: #16a34a;
-  color: #ffffff;
+  background: #f0fdf4;
+  color: #16a34a;
+  border-color: #86efac;
 }
 
 .fm-study-got-btn:hover {
-  background: #15803d;
+  background: #dcfce7;
+  border-color: #4ade80;
 }
 
 .fm-study-summary-text {
@@ -4068,6 +4089,26 @@ body[data-theme="dark"] .fm-study-card {
   border-color: #374151;
 }
 
+body[data-theme="dark"] .fm-study-need-btn {
+  background: #450a0a;
+  border-color: #f87171;
+  color: #fca5a5;
+}
+
+body[data-theme="dark"] .fm-study-need-btn:hover {
+  background: #7f1d1d;
+}
+
+body[data-theme="dark"] .fm-study-got-btn {
+  background: #052e16;
+  border-color: #4ade80;
+  color: #86efac;
+}
+
+body[data-theme="dark"] .fm-study-got-btn:hover {
+  background: #14532d;
+}
+
 body[data-theme="dark"] .vocab-card-family-section {
   border-top-color: #374151;
 }
@@ -4215,6 +4256,20 @@ body[data-theme="sepia"] .fm-study-card {
   background: #faf3e3;
   border-color: #d4c8ab;
 }
+
+body[data-theme="sepia"] .fm-study-need-btn {
+  background: #fef0eb;
+  border-color: #c2856a;
+  color: #92400e;
+}
+body[data-theme="sepia"] .fm-study-need-btn:hover { background: #f5d6cb; }
+
+body[data-theme="sepia"] .fm-study-got-btn {
+  background: #ecfdf5;
+  border-color: #15803d;
+  color: #166534;
+}
+body[data-theme="sepia"] .fm-study-got-btn:hover { background: #d1fae5; }
 
 body[data-theme="sepia"] .vocab-card-family-section {
   border-top-color: #d4c8ab;

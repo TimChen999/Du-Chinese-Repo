@@ -32,8 +32,8 @@
  */
 
 import {
+  bumpViewCount,
   getAllVocab,
-  recordWords,
   updateFlashcardResult,
 } from "../background/vocab-store";
 import {
@@ -372,6 +372,7 @@ function getEls() {
     sessionRelation: document.getElementById("fm-study-relation") as HTMLDivElement | null,
     sessionNeed: document.getElementById("fm-study-need") as HTMLButtonElement | null,
     sessionGot: document.getElementById("fm-study-got") as HTMLButtonElement | null,
+    sessionReveal: document.getElementById("fm-study-reveal") as HTMLButtonElement | null,
     summary: document.getElementById("fm-study-summary") as HTMLDivElement | null,
     summaryText: document.getElementById("fm-study-summary-text") as HTMLParagraphElement | null,
     summaryBack: document.getElementById("fm-study-summary-back") as HTMLButtonElement | null,
@@ -628,17 +629,16 @@ function renderDetail(): void {
   // them for sound siblings.
   appendDecompositionSection(els.members, activeFamily);
 
-  // Action bar — Study (only when there are untouched members)
+  // Action bar — Practice button always available; the session walks
+  // every member as a flashcard run (untouched chars get enrolled in
+  // SRS as a side effect; engaged/confident chars feed grades into the
+  // same SRS pipeline as the regular Flashcards tab).
   if (els.actions) {
     while (els.actions.firstChild) els.actions.removeChild(els.actions.firstChild);
   }
   if (els.study) {
-    const untouched = activeFamily.members.filter((m) => m.state === "untouched");
-    els.study.hidden = untouched.length === 0;
-    els.study.textContent =
-      untouched.length === 1
-        ? "Study 1 untouched"
-        : `Study ${untouched.length} untouched`;
+    els.study.hidden = activeFamily.members.length === 0;
+    els.study.textContent = "Practice";
   }
 }
 
@@ -834,20 +834,29 @@ function glossFor(char: string): string {
 
 // ─── Study session ───────────────────────────────────────────────────
 
+interface SessionCard extends PhoneticMember {
+  state: MemberState;
+}
+
 interface SessionState {
   comp: string;
   reading: string;
-  queue: PhoneticMember[];
+  queue: SessionCard[];
   index: number;
+  revealed: boolean;
 }
 
 let session: SessionState | null = null;
 
 function startSession(): void {
   if (!activeFamily) return;
-  const queue = activeFamily.members
-    .filter((m) => m.state === "untouched")
-    .map((m) => ({ char: m.char, pinyin: m.pinyin, match: m.match, freq: m.freq }));
+  const queue: SessionCard[] = activeFamily.members.map((m) => ({
+    char: m.char,
+    pinyin: m.pinyin,
+    match: m.match,
+    freq: m.freq,
+    state: m.state,
+  }));
   if (queue.length === 0) return;
 
   session = {
@@ -855,6 +864,7 @@ function startSession(): void {
     reading: activeFamily.family.reading,
     queue,
     index: 0,
+    revealed: false,
   };
 
   const els = getEls();
@@ -887,9 +897,29 @@ function renderStudyCard(): void {
   els.sessionComp.textContent =
     `${session.comp} ${formatPinyin(session.reading, "toneMarks")} family`;
   els.sessionChar.textContent = card.char;
-  els.sessionPinyin.textContent = formatPinyin(card.pinyin, "toneMarks");
-  els.sessionDef.textContent = glossFor(card.char);
-  els.sessionRelation.textContent = relationHint(card.match, session.reading, card.pinyin);
+
+  // Front of card: char only. Pinyin/def/relation all give the answer
+  // away (the relation hint literally prints the member's stripped
+  // pinyin), so they stay hidden until the user presses Reveal.
+  if (session.revealed) {
+    els.sessionPinyin.textContent = formatPinyin(card.pinyin, "toneMarks");
+    els.sessionDef.textContent = glossFor(card.char);
+    els.sessionRelation.textContent = relationHint(card.match, session.reading, card.pinyin);
+  } else {
+    els.sessionPinyin.textContent = "";
+    els.sessionDef.textContent = "";
+    els.sessionRelation.textContent = "";
+  }
+
+  if (els.sessionReveal) els.sessionReveal.hidden = session.revealed;
+  if (els.sessionGot) els.sessionGot.hidden = !session.revealed;
+  if (els.sessionNeed) els.sessionNeed.hidden = !session.revealed;
+}
+
+function revealCard(): void {
+  if (!session) return;
+  session.revealed = true;
+  renderStudyCard();
 }
 
 function relationHint(match: PhoneticMatch, base: string, member: string): string {
@@ -916,35 +946,21 @@ async function answerCard(action: "got" | "need"): Promise<void> {
   const card = session.queue[session.index];
   if (!card) return;
 
-  // Both branches first ensure a vocab entry exists at the not-reviewed
-  // baseline. Family study only enqueues untouched members, so this is
-  // always a clean insert (recordWords increments count on existing
-  // entries; for untouched it doesn't).
-  const word = wordDataFor(card.char, card.pinyin);
-  await recordWords([word]);
-  if (action === "got") {
-    // One correct review -- advances to needs-improvement (interval = 1
-    // day). The daily flashcard queue then progresses it to confident
-    // over the same SRS schedule everything else uses.
-    await updateFlashcardResult(card.char, true);
+  // For already-enrolled chars: bump view-count + lastSeen so the
+  // Practice rep counts toward the same "times seen" stat the popup
+  // tracks, and feed the grade into the regular SRS pipeline. For
+  // untouched chars: bumpViewCount intentionally no-ops (it refuses to
+  // create new entries) and the SRS write is skipped, so Practice does
+  // not silently expand the user's vocab list. Saving stays a
+  // deliberate action via the char detail card.
+  await bumpViewCount(card.char);
+  if (card.state !== "untouched") {
+    await updateFlashcardResult(card.char, action === "got");
   }
 
   session.index++;
+  session.revealed = false;
   renderStudyCard();
-}
-
-function wordDataFor(
-  char: string,
-  pinyinNumeric: string,
-): { chars: string; pinyin: string; definition: string } {
-  const entries = lookupExact(char);
-  const first = entries?.[0];
-  const def = first ? first.definitions.slice(0, 2).join("; ") : "";
-  return {
-    chars: char,
-    pinyin: formatPinyin(pinyinNumeric, "toneMarks"),
-    definition: def,
-  };
 }
 
 async function finishSession(): Promise<void> {
@@ -1051,6 +1067,7 @@ export function initFamilies(): void {
   els.back?.addEventListener("click", () => closeDetail());
   els.study?.addEventListener("click", () => startSession());
   els.sessionClose?.addEventListener("click", () => endSessionAndReturn());
+  els.sessionReveal?.addEventListener("click", () => revealCard());
   els.sessionGot?.addEventListener("click", () => void answerCard("got"));
   els.sessionNeed?.addEventListener("click", () => void answerCard("need"));
   els.summaryBack?.addEventListener("click", () => endSessionAndReturn());
