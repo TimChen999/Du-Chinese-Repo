@@ -843,7 +843,7 @@ describe("hub page", () => {
       const card = document.querySelector(".vocab-card")!;
       expect(card.querySelector(".vocab-card-chars")!.textContent).toBe("银行");
       expect(card.querySelector(".vocab-card-pinyin")!.textContent).toBe("yín háng");
-      expect(card.querySelector(".vocab-card-def")!.textContent).toBe("bank");
+      expect(card.querySelector(".vocab-card-def-text")!.textContent).toBe("bank");
       expect(card.querySelector(".vocab-card-meta")!.textContent).toContain("Reviews: 10");
       expect(card.querySelector(".vocab-card-meta")!.textContent).toContain("Accuracy: 80%");
     });

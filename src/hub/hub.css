@@ -798,6 +798,9 @@ button.vocab-bucket-summary-chip.active {
 }
 
 .vocab-card-def {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
   font-size: 15px;
   color: #374151;
   line-height: 1.6;
@@ -805,23 +808,43 @@ button.vocab-bucket-summary-chip.active {
   margin-bottom: 10px;
 }
 
-.vocab-card-details-btn {
-  align-self: flex-start;
-  padding: 3px 10px;
-  margin-bottom: 10px;
-  border: 1px solid #d1d5db;
-  border-radius: 4px;
-  background: #ffffff;
-  color: #374151;
-  font-size: 11px;
-  font-weight: 500;
-  font-family: inherit;
-  cursor: pointer;
+.vocab-card-def-text {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
-.vocab-card-details-btn:hover {
-  border-color: #6366f1;
+/* Inline chevron that opens the CC-CEDICT details panel. Sits at the
+ * end of the definition row. When the headword has nothing extra to
+ * show, the button is `hidden` (display:none) so it contributes no
+ * width or gap to the row — the definition takes the full line as
+ * before. The 12px font + 2px padding keeps it visually subordinate
+ * to the 15px definition text. */
+.vocab-card-def-toggle {
+  flex: 0 0 auto;
+  align-self: center;
+  padding: 0 4px;
+  background: transparent;
+  border: none;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1;
+  color: #9ca3af;
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    color 0.15s ease;
+}
+
+.vocab-card-def-toggle:hover {
   color: #4338ca;
+}
+
+.vocab-card-def-toggle[hidden] {
+  display: none;
+}
+
+.vocab-card-def-toggle[aria-expanded="true"] {
+  transform: rotate(180deg);
 }
 
 .vocab-card-details {
@@ -832,11 +855,10 @@ button.vocab-bucket-summary-chip.active {
 }
 
 /* Ensure the HTML `hidden` attribute wins over the explicit display
- * rules above; without this the panel and its trigger button stay
- * visible after the first toggle because `display: flex` / button
- * defaults beat the UA stylesheet's [hidden] { display: none }. */
-.vocab-card-details[hidden],
-.vocab-card-details-btn[hidden] {
+ * rule above; without this the panel stays visible after the first
+ * toggle because `display: flex` beats the UA stylesheet's
+ * [hidden] { display: none }. */
+.vocab-card-details[hidden] {
   display: none;
 }
 
@@ -862,6 +884,23 @@ button.vocab-bucket-summary-chip.active {
 
 .vocab-card-modifier-nested {
   padding-left: 12px;
+}
+
+.vocab-card-glosses {
+  margin: 0;
+  padding-left: 22px;
+  font-size: 13px;
+  color: #4b5563;
+  line-height: 1.5;
+}
+
+.vocab-card-glosses-nested {
+  padding-left: 34px;
+}
+
+.vocab-card-gloss {
+  margin: 0;
+  padding: 0;
 }
 
 /* Section divider for the per-character breakdown — matches the
@@ -1051,6 +1090,7 @@ button.vocab-bucket-summary-chip.active {
 
 body[data-theme="dark"] .vocab-card-reading { color: #d1d5db; }
 body[data-theme="dark"] .vocab-card-modifier { color: #9ca3af; }
+body[data-theme="dark"] .vocab-card-glosses { color: #d1d5db; }
 body[data-theme="dark"] .vocab-card-char-row { color: #d1d5db; }
 body[data-theme="dark"] .vocab-card-chars-section { border-top-color: #374151; }
 body[data-theme="dark"] .vocab-card-chars-toggle { color: #9ca3af; }
@@ -1061,18 +1101,13 @@ body[data-theme="dark"] .vocab-card-components-toggle:hover { color: #a5b4fc; }
 body[data-theme="dark"] .vocab-card-components-ids { color: #9ca3af; }
 body[data-theme="dark"] .vocab-card-components-radical { color: #9ca3af; }
 body[data-theme="dark"] .vocab-card-components-hint { color: #9ca3af; }
-body[data-theme="dark"] .vocab-card-details-btn {
-  background: #1f2937;
-  border-color: #4b5563;
-  color: #d1d5db;
-}
-body[data-theme="dark"] .vocab-card-details-btn:hover {
-  border-color: #818cf8;
-  color: #a5b4fc;
-}
+body[data-theme="dark"] .vocab-card-def { color: #e5e7eb; }
+body[data-theme="dark"] .vocab-card-def-toggle { color: #6b7280; }
+body[data-theme="dark"] .vocab-card-def-toggle:hover { color: #a5b4fc; }
 
 body[data-theme="sepia"] .vocab-card-reading { color: #5c4b37; }
 body[data-theme="sepia"] .vocab-card-modifier { color: #8b7355; }
+body[data-theme="sepia"] .vocab-card-glosses { color: #5c4b37; }
 body[data-theme="sepia"] .vocab-card-char-row { color: #5c4b37; }
 body[data-theme="sepia"] .vocab-card-chars-section { border-top-color: #d4c8ab; }
 body[data-theme="sepia"] .vocab-card-chars-toggle { color: #8b7355; }
@@ -1083,19 +1118,14 @@ body[data-theme="sepia"] .vocab-card-components-toggle:hover { color: #b8860b; }
 body[data-theme="sepia"] .vocab-card-components-ids { color: #8b7355; }
 body[data-theme="sepia"] .vocab-card-components-radical { color: #8b7355; }
 body[data-theme="sepia"] .vocab-card-components-hint { color: #8b7355; }
-body[data-theme="sepia"] .vocab-card-details-btn {
-  background: #f4ecd8;
-  border-color: #d4c8ab;
-  color: #5c4b37;
-}
-body[data-theme="sepia"] .vocab-card-details-btn:hover {
-  border-color: #b8860b;
-  color: #b8860b;
-}
+body[data-theme="sepia"] .vocab-card-def { color: #5c4b37; }
+body[data-theme="sepia"] .vocab-card-def-toggle { color: #8b7355; }
+body[data-theme="sepia"] .vocab-card-def-toggle:hover { color: #b8860b; }
 
 @media (prefers-color-scheme: dark) {
   body[data-theme="auto"] .vocab-card-reading { color: #d1d5db; }
   body[data-theme="auto"] .vocab-card-modifier { color: #9ca3af; }
+  body[data-theme="auto"] .vocab-card-glosses { color: #d1d5db; }
   body[data-theme="auto"] .vocab-card-char-row { color: #d1d5db; }
   body[data-theme="auto"] .vocab-card-chars-section { border-top-color: #374151; }
   body[data-theme="auto"] .vocab-card-chars-toggle { color: #9ca3af; }
@@ -1106,15 +1136,9 @@ body[data-theme="sepia"] .vocab-card-details-btn:hover {
   body[data-theme="auto"] .vocab-card-components-ids { color: #9ca3af; }
   body[data-theme="auto"] .vocab-card-components-radical { color: #9ca3af; }
   body[data-theme="auto"] .vocab-card-components-hint { color: #9ca3af; }
-  body[data-theme="auto"] .vocab-card-details-btn {
-    background: #1f2937;
-    border-color: #4b5563;
-    color: #d1d5db;
-  }
-  body[data-theme="auto"] .vocab-card-details-btn:hover {
-    border-color: #818cf8;
-    color: #a5b4fc;
-  }
+  body[data-theme="auto"] .vocab-card-def { color: #e5e7eb; }
+  body[data-theme="auto"] .vocab-card-def-toggle { color: #6b7280; }
+  body[data-theme="auto"] .vocab-card-def-toggle:hover { color: #a5b4fc; }
 }
 
 .vocab-card-meta {

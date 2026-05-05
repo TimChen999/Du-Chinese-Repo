@@ -676,8 +676,11 @@ function renderExamplesSection(
 
 /**
  * Renders CC-CEDICT dictionary details for `chars` into `container`:
- *  - Per-reading rows (pinyin + first 2 definitions) when the headword
- *    has multiple readings (homographs like 王 / 熬).
+ *  - Per-reading pinyin header when the headword has multiple readings
+ *    (homographs like 王 / 熬). Single-reading words skip the header
+ *    since the reading already shows next to the headword.
+ *  - Numbered list of all CC-CEDICT glosses (slash-separated senses
+ *    rendered as 1. / 2. / 3. ...). Mirrors Pleco's CC dictionary block.
  *  - Modifier rows (classifiers, "abbr. for", "Taiwan pr.", etc.),
  *    nested under their owning reading when readings are visible,
  *    flat when there's only one reading.
@@ -697,13 +700,21 @@ function fillCardDetails(container: HTMLElement, chars: string): void {
       const pinyin = document.createElement("span");
       pinyin.className = "vocab-card-reading-pinyin";
       pinyin.textContent = formatPinyin(entry.pinyinNumeric, "toneMarks");
-      const def = document.createElement("span");
-      def.className = "vocab-card-reading-def";
-      def.textContent = entry.definitions.slice(0, 2).join("; ");
       reading.appendChild(pinyin);
-      reading.appendChild(document.createTextNode(" — "));
-      reading.appendChild(def);
       container.appendChild(reading);
+    }
+    if (entry.definitions.length > 0) {
+      const list = document.createElement("ol");
+      list.className = showReadings
+        ? "vocab-card-glosses vocab-card-glosses-nested"
+        : "vocab-card-glosses";
+      for (const def of entry.definitions) {
+        const li = document.createElement("li");
+        li.className = "vocab-card-gloss";
+        li.textContent = def;
+        list.appendChild(li);
+      }
+      container.appendChild(list);
     }
     for (const mod of entry.modifiers) {
       const row = document.createElement("div");
@@ -926,53 +937,61 @@ async function showVocabCard(
 
   const def = document.createElement("div");
   def.className = "vocab-card-def";
-  def.textContent = entry.definition;
 
-  // CC-CEDICT dictionary details (alt readings + modifiers) pulled live
-  // from the dictionary at render time. Mirrors the popup's Details
-  // toggle: a small button sits under the gloss; clicking it expands a
-  // panel showing alt readings + modifiers. Hidden entirely when the
-  // headword has nothing extra to show (single reading, no modifiers)
-  // or when CC-CEDICT isn't loaded.
-  const detailsBtn = document.createElement("button");
-  detailsBtn.type = "button";
-  detailsBtn.className = "vocab-card-details-btn";
-  detailsBtn.hidden = true;
+  const defTextEl = document.createElement("span");
+  defTextEl.className = "vocab-card-def-text";
+  defTextEl.textContent = entry.definition;
+
+  // CC-CEDICT dictionary details toggle. The chevron sits inline at the
+  // end of the definition row and is `hidden` (display:none, zero space
+  // contribution) when the headword has only a single sense/reading and
+  // no modifiers — the common case. When the entry has more to surface
+  // (numbered glosses, alt readings, classifiers, etc.) the chevron
+  // appears and expanding rotates it 180° to reveal the panel below.
+  const detailsToggle = document.createElement("button");
+  detailsToggle.type = "button";
+  detailsToggle.className = "vocab-card-def-toggle";
+  detailsToggle.setAttribute("aria-label", "Show dictionary details");
+  detailsToggle.setAttribute("aria-expanded", "false");
+  detailsToggle.textContent = "˅";
+  detailsToggle.hidden = true;
+
+  def.append(defTextEl, detailsToggle);
 
   const details = document.createElement("div");
   details.className = "vocab-card-details";
   details.hidden = true;
 
-  detailsBtn.addEventListener("click", () => {
+  detailsToggle.addEventListener("click", () => {
     if (details.hidden) {
       fillCardDetails(details, entry.chars);
       details.hidden = false;
-      detailsBtn.setAttribute("aria-expanded", "true");
+      detailsToggle.setAttribute("aria-expanded", "true");
+      detailsToggle.setAttribute("aria-label", "Hide dictionary details");
     } else {
       details.hidden = true;
-      detailsBtn.setAttribute("aria-expanded", "false");
+      detailsToggle.setAttribute("aria-expanded", "false");
+      detailsToggle.setAttribute("aria-label", "Show dictionary details");
     }
   });
 
   function refreshDetailsAffordance(): void {
     const entries = lookupExact(entry.chars);
     if (!entries || entries.length === 0) {
-      detailsBtn.hidden = true;
+      detailsToggle.hidden = true;
       details.hidden = true;
       return;
     }
     const hasMultipleReadings = entries.length > 1;
     const hasModifiers = entries.some((e) => e.modifiers.length > 0);
-    if (!hasMultipleReadings && !hasModifiers) {
-      detailsBtn.hidden = true;
+    const totalDefs = entries.reduce((n, e) => n + e.definitions.length, 0);
+    const hasMultipleGlosses = totalDefs >= 2;
+    if (!hasMultipleReadings && !hasModifiers && !hasMultipleGlosses) {
+      detailsToggle.hidden = true;
       details.hidden = true;
       return;
     }
-    detailsBtn.hidden = false;
-    detailsBtn.textContent = hasMultipleReadings
-      ? `${entries.length} readings`
-      : "Details";
-    detailsBtn.setAttribute("aria-expanded", details.hidden ? "false" : "true");
+    detailsToggle.hidden = false;
     // If the panel is already open, re-render against the freshly
     // loaded data so a late dictionary arrival doesn't leave it stale.
     if (!details.hidden) fillCardDetails(details, entry.chars);
@@ -1254,7 +1273,6 @@ async function showVocabCard(
     charsRow,
     pinyin,
     def,
-    detailsBtn,
     details,
     bucketRow,
     meta,
@@ -1377,17 +1395,33 @@ function showCharDetailCard(
   const def = document.createElement("div");
   def.className = "vocab-card-def";
 
+  const defTextEl = document.createElement("span");
+  defTextEl.className = "vocab-card-def-text";
+
+  // Inline chevron toggle — same pattern as the parent vocab card. Stays
+  // hidden (and contributes zero space) when the character's CC-CEDICT
+  // entry has only a single sense, single reading, and no modifiers.
+  const detailsToggle = document.createElement("button");
+  detailsToggle.type = "button";
+  detailsToggle.className = "vocab-card-def-toggle";
+  detailsToggle.setAttribute("aria-label", "Show dictionary details");
+  detailsToggle.setAttribute("aria-expanded", "false");
+  detailsToggle.textContent = "˅";
+  detailsToggle.hidden = true;
+
+  def.append(defTextEl, detailsToggle);
+
   function refreshHeadFromCedict(): void {
     const entries = lookupExact(ch);
     const first = entries?.[0];
     pinyin.textContent = first
       ? formatPinyin(first.pinyinNumeric, "toneMarks")
       : "";
-    let defText = first ? first.definitions.slice(0, 4).join("; ") : "";
-    if (!defText && first && first.modifiers.length > 0) {
-      defText = formatModifier(first.modifiers[0], "toneMarks");
+    let defString = first ? first.definitions.slice(0, 4).join("; ") : "";
+    if (!defString && first && first.modifiers.length > 0) {
+      defString = formatModifier(first.modifiers[0], "toneMarks");
     }
-    def.textContent = defText;
+    defTextEl.textContent = defString;
   }
   refreshHeadFromCedict();
 
@@ -1395,45 +1429,40 @@ function showCharDetailCard(
   // card's affordance verbatim so multi-reading characters like 武 (wǔ
   // / mǔ) show both, and modifiers (e.g. classifiers) surface the same
   // way they do on a saved vocab card.
-  const detailsBtn = document.createElement("button");
-  detailsBtn.type = "button";
-  detailsBtn.className = "vocab-card-details-btn";
-  detailsBtn.hidden = true;
-
   const details = document.createElement("div");
   details.className = "vocab-card-details";
   details.hidden = true;
 
-  detailsBtn.addEventListener("click", () => {
+  detailsToggle.addEventListener("click", () => {
     if (details.hidden) {
       fillCardDetails(details, ch);
       details.hidden = false;
-      detailsBtn.setAttribute("aria-expanded", "true");
+      detailsToggle.setAttribute("aria-expanded", "true");
+      detailsToggle.setAttribute("aria-label", "Hide dictionary details");
     } else {
       details.hidden = true;
-      detailsBtn.setAttribute("aria-expanded", "false");
+      detailsToggle.setAttribute("aria-expanded", "false");
+      detailsToggle.setAttribute("aria-label", "Show dictionary details");
     }
   });
 
   function refreshDetailsAffordance(): void {
     const entries = lookupExact(ch);
     if (!entries || entries.length === 0) {
-      detailsBtn.hidden = true;
+      detailsToggle.hidden = true;
       details.hidden = true;
       return;
     }
     const hasMultipleReadings = entries.length > 1;
     const hasModifiers = entries.some((e) => e.modifiers.length > 0);
-    if (!hasMultipleReadings && !hasModifiers) {
-      detailsBtn.hidden = true;
+    const totalDefs = entries.reduce((n, e) => n + e.definitions.length, 0);
+    const hasMultipleGlosses = totalDefs >= 2;
+    if (!hasMultipleReadings && !hasModifiers && !hasMultipleGlosses) {
+      detailsToggle.hidden = true;
       details.hidden = true;
       return;
     }
-    detailsBtn.hidden = false;
-    detailsBtn.textContent = hasMultipleReadings
-      ? `${entries.length} readings`
-      : "Details";
-    detailsBtn.setAttribute("aria-expanded", details.hidden ? "false" : "true");
+    detailsToggle.hidden = false;
     if (!details.hidden) fillCardDetails(details, ch);
   }
   refreshDetailsAffordance();
@@ -1547,7 +1576,6 @@ function showCharDetailCard(
     charsRow,
     pinyin,
     def,
-    detailsBtn,
     details,
     componentsSection,
     familySection,
