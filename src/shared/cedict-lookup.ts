@@ -136,6 +136,64 @@ export function lookupExact(headword: string): CedictEntry[] | null {
 }
 
 /**
+ * Returns `headword` rendered in the requested script. The conversion
+ * is purely CC-CEDICT-driven and uses no extra resources, and works
+ * BIDIRECTIONALLY — entries are keyed in the dictionary by both their
+ * traditional and simplified forms, so a lookup hits regardless of
+ * which form `headword` is currently in:
+ *
+ *   1. If the headword exactly matches a CC-CEDICT entry (under either
+ *      key), return that entry's `traditional` or `simplified` field
+ *      depending on the requested script. Handles multi-char words
+ *      like 体育 ↔ 體育 correctly because CC-CEDICT stores the pair
+ *      as a unit.
+ *   2. Otherwise, fall back to per-character substitution: each char is
+ *      looked up as its own CC-CEDICT entry; if found, swap to that
+ *      entry's matching field. Covers compositional words whose pieces
+ *      are dictionary-known.
+ *   3. Unknown characters (rare CJK, punctuation, non-Han) pass through
+ *      unchanged.
+ *
+ * Returns the input unchanged when the dictionary isn't loaded yet, or
+ * the headword has no CC-CEDICT coverage at all.
+ *
+ * Note: per-character conversion has inherent ambiguity for some chars
+ * (e.g. 后 can be either 后 or 後 depending on context). CC-CEDICT picks
+ * one mapping per single-char entry; users wanting context-aware
+ * conversion would need to bundle OpenCC. For dictionary-surface
+ * display this limitation is acceptable — the CC-CEDICT mapping is
+ * the same one used by Pleco and other major dictionaries.
+ */
+export function toDisplayScript(
+  headword: string,
+  script: "simplified" | "traditional",
+): string {
+  if (!headword || !dictionary) return headword;
+
+  const pickField = (e: CedictEntry): string =>
+    script === "traditional" ? e.traditional : e.simplified;
+
+  const entries = dictionary.get(headword);
+  if (entries && entries.length > 0) {
+    return pickField(entries[0]);
+  }
+
+  // Per-character fallback. Iterate by codepoint so supplementary-plane
+  // CJK survives as a single character (rather than being split into
+  // surrogate halves and corrupting the lookup).
+  let out = "";
+  for (const ch of Array.from(headword)) {
+    const charEntries = dictionary.get(ch);
+    if (charEntries && charEntries.length > 0) {
+      out += pickField(charEntries[0]);
+    } else {
+      out += ch;
+    }
+  }
+  return out;
+}
+
+/**
  * Returns CC-CEDICT entries whose simplified headword contains
  * `headword` as a contiguous substring, sorted with words *beginning
  * with* the headword first (then by length ascending, then

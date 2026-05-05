@@ -15,9 +15,28 @@
  */
 
 import { DEFAULT_SETTINGS, PROVIDER_PRESETS } from "../shared/constants";
-import type { ExtensionSettings, LLMProvider } from "../shared/types";
+import type {
+  DisplayScript,
+  ExtensionSettings,
+  LLMProvider,
+} from "../shared/types";
 import { getAllVocab, removeWord } from "../background/vocab-store";
 import type { VocabEntry } from "../shared/types";
+import {
+  ensureDictionaryLoaded,
+  toDisplayScript,
+} from "../shared/cedict-lookup";
+
+/**
+ * Mirror of hub.ts's currentDisplayScript. Updated whenever the popup
+ * loads its settings (each open is a fresh popup context, so a single
+ * read at load time is enough — no live listener needed). Reading is
+ * via the local display() helper at every Chinese-glyph render site.
+ */
+let popupDisplayScript: DisplayScript = "simplified";
+function display(chars: string): string {
+  return toDisplayScript(chars, popupDisplayScript);
+}
 import { resolveSharedTheme } from "../shared/theme";
 import { syncRangeFill } from "../shared/range-slider";
 
@@ -35,6 +54,9 @@ function getElements() {
     customModel: document.getElementById("custom-model") as HTMLInputElement,
     pinyinRadios: document.querySelectorAll<HTMLInputElement>(
       'input[name="pinyin-style"]',
+    ),
+    displayScriptRadios: document.querySelectorAll<HTMLInputElement>(
+      'input[name="display-script"]',
     ),
     fontSize: document.getElementById("font-size") as HTMLInputElement,
     fontSizeLabel: document.getElementById("font-size-label") as HTMLSpanElement,
@@ -292,6 +314,11 @@ function readFormValues(els: ReturnType<typeof getElements>): ExtensionSettings 
     if (r.checked) pinyinStyle = r.value as ExtensionSettings["pinyinStyle"];
   });
 
+  let displayScript = DEFAULT_SETTINGS.displayScript;
+  els.displayScriptRadios.forEach((r) => {
+    if (r.checked) displayScript = r.value as ExtensionSettings["displayScript"];
+  });
+
   const modelValue =
     els.model.value === "__custom__"
       ? els.customModel.value.trim()
@@ -303,6 +330,7 @@ function readFormValues(els: ReturnType<typeof getElements>): ExtensionSettings 
     baseUrl: els.baseUrl.value.trim(),
     model: modelValue,
     pinyinStyle,
+    displayScript,
     fontSize: parseInt(els.fontSize.value, 10),
     theme: els.theme.value as ExtensionSettings["theme"],
     llmEnabled: els.llmEnabled.checked,
@@ -353,7 +381,7 @@ function showVocabCard(
 
   const chars = document.createElement("div");
   chars.className = "vocab-card-chars";
-  chars.textContent = entry.chars;
+  chars.textContent = display(entry.chars);
 
   const pinyin = document.createElement("div");
   pinyin.className = "vocab-card-pinyin";
@@ -413,7 +441,7 @@ async function renderVocabList(els: ReturnType<typeof getElements>): Promise<voi
     row.className = "vocab-row";
     row.style.cursor = "pointer";
     row.innerHTML =
-      `<span class="vocab-chars">${entry.chars}</span>` +
+      `<span class="vocab-chars">${display(entry.chars)}</span>` +
       `<span class="vocab-pinyin">${entry.pinyin}</span>` +
       `<span class="vocab-def">${entry.definition}</span>`;
     row.addEventListener("click", () => showVocabCard(entry, els));
@@ -438,6 +466,15 @@ export async function initPopup(): Promise<void> {
   const els = getElements();
   const settings = await loadSettings();
 
+  // Cache the display-script preference so the vocab list / vocab card
+  // render in the user's chosen script. Kick off CC-CEDICT load so
+  // toDisplayScript() has data to convert against; until it lands we
+  // fall through to simplified (cheap, correct, just won't flip yet).
+  popupDisplayScript = settings.displayScript;
+  void ensureDictionaryLoaded().catch(() => {
+    /* dict load failure already surfaced elsewhere */
+  });
+
   // Populate form from stored settings
   els.provider.value = settings.provider;
   els.apiKey.value = settings.apiKey;
@@ -453,6 +490,10 @@ export async function initPopup(): Promise<void> {
 
   els.pinyinRadios.forEach((r) => {
     r.checked = r.value === settings.pinyinStyle;
+  });
+
+  els.displayScriptRadios.forEach((r) => {
+    r.checked = r.value === settings.displayScript;
   });
 
   const preset = PROVIDER_PRESETS[settings.provider];

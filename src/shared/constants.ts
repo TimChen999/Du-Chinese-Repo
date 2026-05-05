@@ -73,6 +73,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   baseUrl: PROVIDER_PRESETS.openai.baseUrl,
   model: PROVIDER_PRESETS.openai.defaultModel,
   pinyinStyle: "toneMarks",
+  displayScript: "simplified",
   fontSize: 16,
   theme: "auto",
   llmEnabled: true,

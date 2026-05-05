@@ -124,12 +124,25 @@ export interface LLMConfig {
  * The popup reads/writes these; the service worker and overlay consume them.
  * (SPEC.md Section 2.5 "Settings and Configuration")
  */
+/**
+ * Which Chinese script form the dictionary surfaces should render in.
+ * Affects the vocab card and hub UI surfaces that pull from CC-CEDICT
+ * (headwords, character breakdowns, composition rows, words rows).
+ *
+ * Storage stays simplified regardless — this is purely a render-time
+ * preference. Captured example sentences are NOT converted (they're
+ * mixed prose, often outside CC-CEDICT, and reliable conversion would
+ * need OpenCC or similar).
+ */
+export type DisplayScript = "simplified" | "traditional";
+
 export interface ExtensionSettings {
   provider: LLMProvider;
   apiKey: string;
   baseUrl: string;
   model: string;
   pinyinStyle: PinyinStyle;
+  displayScript: DisplayScript;
   fontSize: number;
   theme: Theme;
   llmEnabled: boolean;

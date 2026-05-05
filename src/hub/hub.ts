@@ -27,8 +27,10 @@ import {
   formatPinyin,
   isDictionaryReady,
   lookupExact,
+  toDisplayScript,
   wordsContaining,
 } from "../shared/cedict-lookup";
+import type { DisplayScript } from "../shared/types";
 import {
   charsContaining,
   ensureComponentsLoaded,
@@ -382,6 +384,40 @@ function shuffleArray<T>(arr: T[]): T[] {
 // ─── Vocab Card Overlay ──────────────────────────────────────────────
 
 /**
+ * Current Chinese-script render preference for dictionary surfaces.
+ * Initialized in initHub() from chrome.storage.sync and kept in sync via
+ * a storage onChanged listener so the toggle in the popup propagates
+ * live to any open card. Storage stays simplified by convention; this
+ * variable only affects RENDERING.
+ *
+ * Read by display() at every Chinese-glyph render site (headwords,
+ * char breakdowns, composition leaves, words rows, etc.). User-captured
+ * example sentences are intentionally NOT routed through display() —
+ * they're mixed prose, often outside CC-CEDICT, and reliable conversion
+ * would need OpenCC.
+ */
+let currentDisplayScript: DisplayScript = "simplified";
+
+/**
+ * Last opened card's re-render callback. Captured by showVocabCard /
+ * showCharDetailCard so the storage onChanged listener can re-render
+ * the open card in place when the user toggles the display-script
+ * setting from the popup. Cleared by dismissVocabCard.
+ */
+let lastCardRefresh: (() => void) | null = null;
+
+/**
+ * Renders `chars` in the user's currently-selected display script.
+ * Resolves via CC-CEDICT — see toDisplayScript() in cedict-lookup.ts.
+ * Pass-through when the dictionary isn't loaded yet (callers see
+ * simplified, then re-render on the late-arrival hook to flip to
+ * traditional once the dictionary lands).
+ */
+function display(chars: string): string {
+  return toDisplayScript(chars, currentDisplayScript);
+}
+
+/**
  * One-step-back navigation chain across vocab/char-detail cards.
  * Each card carries its parent (the frame the user came from); clicking
  * the back arrow re-renders that parent. The chain forms an implicit
@@ -404,6 +440,9 @@ function dismissVocabCard(): void {
   // once the overlay is detached).
   stopKaraoke();
   document.querySelector(".vocab-card-overlay")?.remove();
+  // Clear the re-render hook so a stale callback doesn't fire if the
+  // user toggles display-script while no card is open.
+  lastCardRefresh = null;
 }
 
 /**
@@ -805,10 +844,10 @@ function fillCharsBreakdown(
       const han = document.createElement("span");
       han.className = "vocab-card-char-han";
       if (idx === 0) {
-        han.textContent = ch;
+        han.textContent = display(ch);
       } else {
         han.classList.add("vocab-card-char-han-repeat");
-        han.textContent = ch;
+        han.textContent = display(ch);
       }
 
       const pinyin = document.createElement("span");
@@ -866,7 +905,7 @@ function buildCharLookupRow(
 
   const han = document.createElement("span");
   han.className = "vocab-card-char-han";
-  han.textContent = ch;
+  han.textContent = display(ch);
 
   const pinyin = document.createElement("span");
   pinyin.className = "vocab-card-char-pinyin";
@@ -927,7 +966,11 @@ function fillCompositionPanel(
 
     const ids = document.createElement("div");
     ids.className = "vocab-card-components-ids";
-    ids.textContent = entry.decomposition;
+    // The IDS string is a mix of IDC operators (⿰⿱⿲...) and Han glyphs.
+    // display() leaves IDC operators alone (not in CC-CEDICT) and converts
+    // each Han glyph individually, so the structural notation stays intact
+    // while the leaf characters reflect the user's display preference.
+    ids.textContent = display(entry.decomposition);
     container.appendChild(ids);
 
     const leaves = leafComponents(entry.decomposition, char);
@@ -944,7 +987,7 @@ function fillCompositionPanel(
       rad.textContent = "Radical: ";
       const radHan = document.createElement("span");
       radHan.className = "vocab-card-components-radical-han";
-      radHan.textContent = entry.radical;
+      radHan.textContent = display(entry.radical);
       rad.appendChild(radHan);
       container.appendChild(rad);
     }
@@ -968,8 +1011,8 @@ function fillCompositionPanel(
   subhead.textContent = "Found in:";
   container.appendChild(subhead);
 
-  const display = compounds.slice(0, COMPOUNDS_DISPLAY_CAP);
-  for (const cmp of display) {
+  const compoundsToShow = compounds.slice(0, COMPOUNDS_DISPLAY_CAP);
+  for (const cmp of compoundsToShow) {
     container.appendChild(buildCharLookupRow(cmp, onCharClick));
   }
   if (compounds.length > COMPOUNDS_DISPLAY_CAP) {
@@ -1004,16 +1047,19 @@ function fillWordsPanel(
   const entries = wordsContaining(headword);
   if (entries.length === 0) return;
 
-  const display = entries.slice(0, WORDS_DISPLAY_CAP);
-  for (const entry of display) {
+  const entriesToShow = entries.slice(0, WORDS_DISPLAY_CAP);
+  for (const entry of entriesToShow) {
     const row = document.createElement("div");
     row.className = "vocab-card-words-row";
     if (onWordClick) {
       row.classList.add("vocab-card-words-row-clickable");
       row.tabIndex = 0;
       row.setAttribute("role", "button");
-      row.setAttribute("aria-label", `Look up ${entry.simplified}`);
+      // The drill-target is always the simplified form so downstream
+      // CC-CEDICT lookups hit the canonical key; rendering still flips
+      // to traditional via display() below.
       const target = entry.simplified;
+      row.setAttribute("aria-label", `Look up ${display(target)}`);
       row.addEventListener("click", (ev) => {
         ev.stopPropagation();
         onWordClick(target);
@@ -1029,7 +1075,7 @@ function fillWordsPanel(
 
     const han = document.createElement("span");
     han.className = "vocab-card-words-han";
-    han.textContent = entry.simplified;
+    han.textContent = display(entry.simplified);
 
     const pinyin = document.createElement("span");
     pinyin.className = "vocab-card-words-pinyin";
@@ -1063,6 +1109,12 @@ async function showVocabCard(
 ): Promise<void> {
   dismissVocabCard();
 
+  // Capture a re-mount callback so the storage onChanged listener can
+  // re-render this card in place when the user flips display-script.
+  lastCardRefresh = () => {
+    void showVocabCard(entry, els);
+  };
+
   const overlay = document.createElement("div");
   overlay.className = "vocab-card-overlay";
   // Opt the whole card out of the page-level click-flow so clicking a
@@ -1088,7 +1140,7 @@ async function showVocabCard(
 
   const chars = document.createElement("div");
   chars.className = "vocab-card-chars";
-  chars.textContent = entry.chars;
+  chars.textContent = display(entry.chars);
 
   const charsTts = buildTtsButton(entry.chars, "Play word");
   charsTts.classList.add("vocab-card-chars-tts");
@@ -1375,6 +1427,10 @@ async function showVocabCard(
     void ensureDictionaryLoaded()
       .then(() => {
         if (!document.body.contains(card)) return;
+        // Headword glyph: display() is a no-op until CC-CEDICT loads,
+        // so re-render after late arrival to flip simp -> trad if the
+        // user has display=traditional.
+        chars.textContent = display(entry.chars);
         refreshDetailsAffordance();
         refreshCharsAffordance();
         // Composition + Words rows reuse CC-CEDICT pinyin/gloss; refresh
@@ -1583,6 +1639,12 @@ function showCharDetailCard(
 ): void {
   dismissVocabCard();
 
+  // Same re-mount hook as showVocabCard so display-script changes
+  // re-render this drill-down card in place rather than dismissing it.
+  lastCardRefresh = () => {
+    showCharDetailCard(ch, parent, els);
+  };
+
   const overlay = document.createElement("div");
   overlay.className = "vocab-card-overlay";
   overlay.dataset.noClickflow = "";
@@ -1624,7 +1686,7 @@ function showCharDetailCard(
 
   const chars = document.createElement("div");
   chars.className = "vocab-card-chars";
-  chars.textContent = ch;
+  chars.textContent = display(ch);
 
   const charsTts = buildTtsButton(ch, "Play character");
   charsTts.classList.add("vocab-card-chars-tts");
@@ -1659,6 +1721,11 @@ function showCharDetailCard(
   function refreshHeadFromCedict(): void {
     const entries = lookupExact(ch);
     const first = entries?.[0];
+    // Headword glyph also needs to reflect display-script — display()
+    // is a no-op until CC-CEDICT loads, so this re-render after late
+    // arrival is what flips simp -> trad on first paint of a card
+    // opened before the dict was ready.
+    chars.textContent = display(ch);
     pinyin.textContent = first
       ? formatPinyin(first.pinyinNumeric, "toneMarks")
       : "";
@@ -2253,7 +2320,16 @@ async function renderVocabList(els: ReturnType<typeof getElements>): Promise<voi
     primary.className = "vocab-row-primary";
     const charsSpan = document.createElement("span");
     charsSpan.className = "vocab-chars";
-    appendWithHighlights(charsSpan, entry.chars, query);
+    // Search filter runs on simplified storage upstream; highlights here
+    // would miss when display=traditional (the rendered text differs
+    // from what the user typed). Skip highlighting on the chars column
+    // when scripts differ — pinyin / definition still highlight normally.
+    const displayed = display(entry.chars);
+    if (displayed === entry.chars) {
+      appendWithHighlights(charsSpan, displayed, query);
+    } else {
+      charsSpan.textContent = displayed;
+    }
     const pinyinSpan = document.createElement("span");
     pinyinSpan.className = "vocab-pinyin";
     appendWithHighlights(pinyinSpan, entry.pinyin, query);
@@ -2306,7 +2382,7 @@ function showCard(els: ReturnType<typeof getElements>): void {
   if (!session) return;
   const card = session.cards[session.currentIndex];
   els.fcProgress.textContent = `${session.currentIndex + 1}/${session.cards.length}`;
-  els.fcChars.textContent = card.chars;
+  els.fcChars.textContent = display(card.chars);
   els.fcPinyin.textContent = card.pinyin;
   els.fcDefinition.textContent = card.definition;
   // Reset the example block so the previous card's sentence never
@@ -3421,12 +3497,40 @@ export async function initHub(): Promise<void> {
   const els = getElements();
   await applyTheme();
 
+  // Read the user's display-script preference up-front so the first
+  // card render (which can happen before any user interaction) reflects
+  // the current setting. Subsequent changes from the popup propagate
+  // via the chrome.storage.onChanged listener below.
+  try {
+    const initial = await getEffectiveSettings();
+    currentDisplayScript = initial.displayScript;
+  } catch {
+    // Falls back to the "simplified" default already in the variable.
+  }
+
   // Fire-and-forget CC-CEDICT load so vocab cards can render dictionary
   // modifiers (classifiers, "abbr. for", etc.) live without per-entry
   // storage. The card's modifier section retroactively populates if the
   // dictionary lands while a card is already open.
   void ensureDictionaryLoaded().catch((err) => {
     console.warn("[hub] CC-CEDICT load failed; vocab cards will skip modifier rows.", err);
+  });
+
+  // Live-propagate display-script changes from the popup. Updates every
+  // dictionary surface that's currently visible:
+  //  - any open card (vocab/char-detail) re-mounts via lastCardRefresh
+  //  - the vocab list re-renders so row headwords flip script
+  //  - the flashcard face re-renders if a session is active
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== "sync") return;
+    const change = changes.displayScript;
+    if (!change) return;
+    const next = (change.newValue ?? "simplified") as DisplayScript;
+    if (next === currentDisplayScript) return;
+    currentDisplayScript = next;
+    lastCardRefresh?.();
+    if (!els.tabVocab.classList.contains("hidden")) renderVocabList(els);
+    if (session && !els.fcSession.classList.contains("hidden")) showCard(els);
   });
 
   // Tab switching
