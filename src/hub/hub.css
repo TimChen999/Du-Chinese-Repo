@@ -2823,7 +2823,9 @@ body[data-theme="dark"] .hub-tab-content::-webkit-scrollbar-thumb:hover {
   body[data-theme="auto"] .vocab-card-char-row-clickable:hover,
   body[data-theme="auto"] .vocab-card-char-row-clickable:focus-visible,
   body[data-theme="auto"] .vocab-card-words-row-clickable:hover,
-  body[data-theme="auto"] .vocab-card-words-row-clickable:focus-visible { background: #374151; }
+  body[data-theme="auto"] .vocab-card-words-row-clickable:focus-visible,
+  body[data-theme="auto"] .vocab-card-family-link:hover,
+  body[data-theme="auto"] .vocab-card-family-link:focus-visible { background: #374151; }
   body[data-theme="auto"] .vocab-card-chars { color: #f3f4f6; }
   body[data-theme="auto"] .vocab-card-pinyin { color: #9ca3af; }
   body[data-theme="auto"] .vocab-card-def { color: #d1d5db; }
@@ -3865,18 +3867,20 @@ button.fm-member-row {
   align-items: center;
   gap: 10px;
   font: inherit;
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid #e5e7eb;
-  background: #ffffff;
+  padding: 6px 8px;
+  margin: 0 -8px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
   cursor: pointer;
   text-align: left;
-  transition: border-color 0.1s, background 0.1s;
+  transition: background-color 120ms ease;
 }
 
-.vocab-card-family-link:hover {
-  border-color: #818cf8;
-  background: #f5f3ff;
+.vocab-card-family-link:hover,
+.vocab-card-family-link:focus-visible {
+  background: #f3f4f6;
+  outline: none;
 }
 
 .vocab-card-family-comp {
@@ -4068,14 +4072,9 @@ body[data-theme="dark"] .vocab-card-family-section {
   border-top-color: #374151;
 }
 
-body[data-theme="dark"] .vocab-card-family-link {
-  background: #1f2937;
-  border-color: #374151;
-}
-
-body[data-theme="dark"] .vocab-card-family-link:hover {
-  background: #312e81;
-  border-color: #6366f1;
+body[data-theme="dark"] .vocab-card-family-link:hover,
+body[data-theme="dark"] .vocab-card-family-link:focus-visible {
+  background: #374151;
 }
 
 body[data-theme="dark"] .vocab-card-family-relation {
@@ -4221,14 +4220,9 @@ body[data-theme="sepia"] .vocab-card-family-section {
   border-top-color: #d4c8ab;
 }
 
-body[data-theme="sepia"] .vocab-card-family-link {
-  background: #faf3e3;
-  border-color: #d4c8ab;
-}
-
-body[data-theme="sepia"] .vocab-card-family-link:hover {
-  background: #f0e0b8;
-  border-color: #b8860b;
+body[data-theme="sepia"] .vocab-card-family-link:hover,
+body[data-theme="sepia"] .vocab-card-family-link:focus-visible {
+  background: #ede4cf;
 }
 
 body[data-theme="sepia"] .vocab-card-family-relation {

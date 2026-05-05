@@ -272,9 +272,9 @@ function relatedFamiliesFor(ch: string): RelatedFamily[] {
 function relationLabel(relation: FamilyRelation): string {
   switch (relation) {
     case "head":
-      return "Head of family";
+      return "Phonetic head";
     case "member":
-      return "You're a member";
+      return "Phonetic member";
     case "decomposition":
       return "Via decomposition";
   }
