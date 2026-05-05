@@ -63,6 +63,22 @@ let vocabCallback:
       context: string,
     ) => void)
   | null = null;
+/**
+ * Synchronous predicate that tells the popup whether `chars` is already
+ * in the user's vocab list. Defaults to "never saved" so popups still
+ * render correctly in test envs that don't wire the cache. Backed by
+ * shared/vocab-saved-cache.ts in production.
+ */
+let isVocabSavedFn: (chars: string) => boolean = () => false;
+/**
+ * Notified once per (popup-instance, word) pair when the popup is
+ * opened or retargeted to a word. The host wires this to the vocab
+ * "view count" bump pipeline; the popup itself just ensures it's only
+ * fired once per word per popup so retargeting back-and-forth between
+ * two words inside the same sentence doesn't double-count either.
+ */
+let wordViewedHandler: (chars: string, sentence: string) => void = () => {};
+const wordsViewedThisPopup = new Set<string>();
 let currentSentenceText = "";
 
 /**
@@ -102,6 +118,31 @@ export function setClickPopupVocabCallback(
   ) => void,
 ): void {
   vocabCallback = cb;
+}
+
+/**
+ * Registers the predicate the popup uses to decide whether to render
+ * the action button as "+ Vocab" (default) or "Saved" (already in the
+ * user's vocab list). Called once at host init; subsequent renders pick
+ * up the live state because the cache it points at is mutated in place.
+ */
+export function setClickPopupVocabSavedChecker(
+  fn: (chars: string) => boolean,
+): void {
+  isVocabSavedFn = fn;
+}
+
+/**
+ * Registers the host-side handler invoked once per (popup-instance,
+ * word) pair when the popup opens or retargets onto a word. The host
+ * uses this to bump the saved word's "times seen" count exactly once
+ * per popup view, even if the user retargets back to the same word
+ * later within the same popup.
+ */
+export function setClickPopupWordViewHandler(
+  fn: (chars: string, sentence: string) => void,
+): void {
+  wordViewedHandler = fn;
 }
 
 /**
@@ -236,7 +277,32 @@ export function showBootstrap(args: ShowBootstrapArgs): void {
   currentAnchorRect = args.anchorRect;
   currentSentenceRect = args.sentenceRect;
 
+  // Reset the per-popup view-dedup set so the very first showBootstrap
+  // for a sentence always counts as a fresh view, then immediately mark
+  // the initial word as viewed to avoid re-firing on no-op retargets to
+  // the same chars.
+  wordsViewedThisPopup.clear();
+  notifyWordViewed(args.word.chars, args.sentence);
+
   positionPopup(popup, args.anchorRect, args.sentenceRect);
+}
+
+/**
+ * Fires the host's word-view handler the first time a given chars
+ * string appears in this popup instance. Retargeting back to a
+ * previously-seen word during the same popup is a no-op so the user
+ * doesn't accidentally inflate their seen count by toggling between
+ * two words.
+ */
+function notifyWordViewed(chars: string, sentence: string): void {
+  if (!chars) return;
+  if (wordsViewedThisPopup.has(chars)) return;
+  wordsViewedThisPopup.add(chars);
+  try {
+    wordViewedHandler(chars, sentence);
+  } catch (err) {
+    console.error("[click-popup] word-viewed handler threw:", err);
+  }
 }
 
 /**
@@ -282,15 +348,27 @@ export function upgradeWord(word: {
     glossEl.remove();
   }
   // Update the +Vocab button's payload so saving captures the upgraded
-  // data, not the stale Bootstrap one.
+  // data, not the stale Bootstrap one. If the LLM resegmented and now
+  // points at chars the user has already saved (rare but possible),
+  // flip the button into the "Saved" disabled state so the user
+  // doesn't see a "+ Vocab" affordance for something already on their
+  // list.
   const vocabBtn = tier.querySelector(
     ".pt-add-vocab-btn",
   ) as HTMLButtonElement | null;
   if (vocabBtn) {
-    vocabBtn.dataset.chars = word.chars;
-    vocabBtn.dataset.pinyin = word.pinyin;
-    vocabBtn.dataset.gloss = word.gloss;
+    if (isVocabSavedFn(word.chars)) {
+      applyVocabBtnSavedState(vocabBtn);
+    } else {
+      vocabBtn.dataset.chars = word.chars;
+      vocabBtn.dataset.pinyin = word.pinyin;
+      vocabBtn.dataset.gloss = word.gloss;
+    }
   }
+  // upgradeWord can change which chars the popup points at when the
+  // LLM resegments — treat that as a fresh view of the new chars so
+  // the host can bump its count if the new chars are saved.
+  notifyWordViewed(word.chars, currentSentenceText);
   repositionPopup();
 }
 
@@ -358,7 +436,7 @@ export function refreshPinyinStripActiveWord(chars: string): void {
  * same popup. Distinct from upgradeWord (which only refreshes header +
  * gloss in place after the LLM returns): retargetWord rebuilds the
  * actions row too, so a fresh "+ Vocab" button replaces a previously
- * "Added"-disabled one when the user clicks a new word.
+ * "Saved"-disabled one when the user clicks a new word.
  *
  * Pre-condition: the popup is already open. No-op otherwise.
  */
@@ -383,6 +461,10 @@ export function retargetWord(
     tier.appendChild(gloss);
   }
   tier.appendChild(makeActionsRow(word, sentence, linkHref));
+  // Same-sentence retarget — count the new word as viewed (deduped
+  // against the per-popup set) so first-open-per-word tracking holds
+  // across in-popup word swaps.
+  notifyWordViewed(word.chars, sentence);
   repositionPopup();
 }
 
@@ -501,6 +583,22 @@ function makeWordHeader(word: {
   return header;
 }
 
+/**
+ * Switches a "+ Vocab" button into its terminal "Saved" disabled
+ * state. Used both at button-creation time when a word is already in
+ * the vocab list and after a successful "+ Vocab" click. Removing the
+ * dataset attributes prevents a stale click from re-firing the callback
+ * with old data should the disabled flag ever fail to take effect.
+ */
+function applyVocabBtnSavedState(btn: HTMLButtonElement): void {
+  btn.textContent = "Saved";
+  btn.classList.add("pt-added");
+  btn.disabled = true;
+  delete btn.dataset.chars;
+  delete btn.dataset.pinyin;
+  delete btn.dataset.gloss;
+}
+
 function makeActionsRow(
   word: { chars: string; pinyin: string; gloss: string },
   sentence: string,
@@ -512,23 +610,27 @@ function makeActionsRow(
   if (vocabCallback) {
     const btn = document.createElement("button");
     btn.className = "pt-add-vocab-btn";
-    btn.textContent = "+ Vocab";
-    btn.dataset.chars = word.chars;
-    btn.dataset.pinyin = word.pinyin;
-    btn.dataset.gloss = word.gloss;
-    btn.addEventListener("click", () => {
-      const chars = btn.dataset.chars ?? word.chars;
-      const pinyin = btn.dataset.pinyin ?? word.pinyin;
-      const gloss = btn.dataset.gloss ?? word.gloss;
-      if (!chars || !gloss) return;
-      vocabCallback!(
-        { chars, pinyin, definition: gloss },
-        sentence,
-      );
-      btn.textContent = "Added";
-      btn.classList.add("pt-added");
-      btn.disabled = true;
-    });
+    if (isVocabSavedFn(word.chars)) {
+      // Already in the user's vocab — render directly into the disabled
+      // "Saved" state, no click handler attached.
+      applyVocabBtnSavedState(btn);
+    } else {
+      btn.textContent = "+ Vocab";
+      btn.dataset.chars = word.chars;
+      btn.dataset.pinyin = word.pinyin;
+      btn.dataset.gloss = word.gloss;
+      btn.addEventListener("click", () => {
+        const chars = btn.dataset.chars ?? word.chars;
+        const pinyin = btn.dataset.pinyin ?? word.pinyin;
+        const gloss = btn.dataset.gloss ?? word.gloss;
+        if (!chars || !gloss) return;
+        vocabCallback!(
+          { chars, pinyin, definition: gloss },
+          sentence,
+        );
+        applyVocabBtnSavedState(btn);
+      });
+    }
     row.appendChild(btn);
   }
 

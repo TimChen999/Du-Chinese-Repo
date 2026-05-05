@@ -28,6 +28,7 @@ const mockDismissClickFlow = vi.fn();
 const mockTriggerFromSelection = vi.fn();
 const mockTriggerFromTextNode = vi.fn();
 const mockSetClickPopupVocabCallback = vi.fn();
+const mockSetClickPopupVocabSavedChecker = vi.fn();
 
 vi.mock("../../src/content/click-flow", () => ({
   initClickFlow: mockInitClickFlow,
@@ -39,6 +40,7 @@ vi.mock("../../src/content/click-flow", () => ({
 
 vi.mock("../../src/content/click-popup", () => ({
   setClickPopupVocabCallback: mockSetClickPopupVocabCallback,
+  setClickPopupVocabSavedChecker: mockSetClickPopupVocabSavedChecker,
 }));
 
 vi.mock("../../src/content/overlay.css?inline", () => ({

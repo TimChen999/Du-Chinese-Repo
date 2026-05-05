@@ -8,6 +8,7 @@ vi.mock("../../src/background/vocab-store", () => ({
   removeExample: vi.fn(() => Promise.resolve()),
   setExampleTranslation: vi.fn(() => Promise.resolve()),
   getAllVocab: vi.fn(() => Promise.resolve([])),
+  bumpViewCount: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock("../../src/background/sentence-cache", () => ({

@@ -9,6 +9,7 @@
 import {
   getAllVocab,
   clearVocab,
+  recordWords,
   removeWord,
   removeWords,
   setExampleTranslation,
@@ -16,6 +17,11 @@ import {
   restoreFlashcardState,
   importVocab,
 } from "../background/vocab-store";
+import {
+  initVocabSavedCache,
+  isVocabSaved,
+  markVocabSavedLocally,
+} from "../shared/vocab-saved-cache";
 import { convertToPinyin } from "../background/pinyin-service";
 import {
   DEFAULT_SETTINGS,
@@ -1615,11 +1621,15 @@ async function showVocabCard(
  * character and pop back without losing the parent context.
  *
  * Intentionally lighter than showVocabCard:
- *  - No "+ Vocab" affordance — drill-down has no surrounding example
- *    sentence to capture, and saving every drilled character would
- *    pollute the vocab list.
+ *  - "+ Save" affordance lets the user add the drilled chars to their
+ *    vocab list without an example sentence (drill-down has no
+ *    surrounding context to capture). For chars already in the list
+ *    the button paints as "Saved" disabled. The full vocab card
+ *    surface (bucket pill, SRS, delete, examples) only shows up when
+ *    the user opens the saved entry from the vocab list itself.
  *  - No bucket pill / SRS metadata / delete button — the character
- *    isn't a vocab entry here, just a CC-CEDICT lookup.
+ *    isn't yet (or no longer) being treated as a saved vocab entry on
+ *    this surface.
  */
 /**
  * Public entry point used by the Families tab when the user clicks a
@@ -2024,6 +2034,53 @@ function showCharDetailCard(
       });
   }
 
+  // "+ Save" affordance — adds the drilled chars to the user's vocab
+  // list with no example sentence (drill-down has no surrounding
+  // context to capture). For chars already in the list the button
+  // initialises directly into its disabled "Saved" state. Pinyin /
+  // definition are pulled from CC-CEDICT at click time so a card
+  // opened pre-CEDICT-load that's still on screen when the dictionary
+  // arrives still saves with full data.
+  const actions = document.createElement("div");
+  actions.className = "vocab-card-actions";
+
+  const saveBtn = document.createElement("button");
+  saveBtn.type = "button";
+  saveBtn.className = "vocab-card-save";
+
+  function applySavedUi(): void {
+    saveBtn.textContent = "Saved";
+    saveBtn.classList.add("vocab-card-save-done");
+    saveBtn.disabled = true;
+  }
+
+  if (isVocabSaved(ch)) {
+    applySavedUi();
+  } else {
+    saveBtn.textContent = "+ Save";
+    saveBtn.addEventListener("click", () => {
+      const entries = lookupExact(ch);
+      const first = entries?.[0];
+      const pinyinStr = first
+        ? formatPinyin(first.pinyinNumeric, "toneMarks")
+        : "";
+      const defStr = first ? first.definitions.slice(0, 2).join("; ") : "";
+      // CC-CEDICT miss — saving an entry with no pinyin and no gloss
+      // would create a useless row in the vocab list, so block the
+      // click rather than silently persist garbage. The dictionary-late
+      // re-render hooks below will eventually unblock when entries
+      // arrive (refreshSaveBtn re-runs and either keeps the button
+      // active or, if the user already saved via another surface,
+      // flips it to Saved).
+      if (!pinyinStr && !defStr) return;
+      markVocabSavedLocally(ch);
+      void recordWords([{ chars: ch, pinyin: pinyinStr, definition: defStr }]);
+      applySavedUi();
+    });
+  }
+
+  actions.appendChild(saveBtn);
+
   if (backBtn) card.appendChild(backBtn);
   card.append(
     closeBtn,
@@ -2035,6 +2092,7 @@ function showCharDetailCard(
     compositionSection,
     familySection,
     wordsSection,
+    actions,
   );
 
   overlay.appendChild(card);
@@ -3496,6 +3554,12 @@ async function handleImport(
 export async function initHub(): Promise<void> {
   const els = getElements();
   await applyTheme();
+
+  // Warm the saved-state cache so the drill-down character/word detail
+  // card's "+ Save" button can paint its initial state synchronously
+  // (Saved vs not) without flicker. Future writes from this page or
+  // any open content script keep it fresh via chrome.storage.onChanged.
+  initVocabSavedCache();
 
   // Read the user's display-script preference up-front so the first
   // card render (which can happen before any user interaction) reflects

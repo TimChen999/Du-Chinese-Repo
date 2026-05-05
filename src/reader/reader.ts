@@ -19,7 +19,15 @@ import {
   setSentenceTranslationProvider,
   dismissClickFlow,
 } from "../content/click-flow";
-import { setClickPopupVocabCallback } from "../content/click-popup";
+import {
+  setClickPopupVocabCallback,
+  setClickPopupVocabSavedChecker,
+} from "../content/click-popup";
+import {
+  initVocabSavedCache,
+  isVocabSaved,
+  markVocabSavedLocally,
+} from "../shared/vocab-saved-cache";
 import { ensureHighlightStylesInjected } from "../content/page-highlight";
 import { queryLLMSentence } from "../background/llm-client";
 import {
@@ -1305,8 +1313,16 @@ export async function initReader(): Promise<void> {
 
   // Shared "+ Vocab" pipeline -- same handler the in-page content
   // script registers, so reader captures stay on one wire format.
-  // See src/shared/vocab-capture.ts.
-  setClickPopupVocabCallback(handleVocabCapture);
+  // See src/shared/vocab-capture.ts. Also wire the saved-state cache
+  // so the popup paints "Saved" instead of "+ Vocab" for words already
+  // in the user's vocab list, and so post-save the local cache stays
+  // ahead of the storage onChanged round-trip.
+  initVocabSavedCache();
+  setClickPopupVocabSavedChecker(isVocabSaved);
+  setClickPopupVocabCallback((word, context) => {
+    markVocabSavedLocally(word.chars);
+    return handleVocabCapture(word, context);
+  });
 
   // ── Click-flow integration ────────────────────────────────────
   //

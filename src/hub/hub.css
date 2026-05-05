@@ -1366,6 +1366,70 @@ body[data-theme="sepia"] .vocab-card-def-toggle:hover { color: #b8860b; }
   border-color: #dc2626;
 }
 
+/* "+ Save" affordance on the drill-down char-detail card. Sits in the
+ * same .vocab-card-actions row as the parent vocab card's Delete
+ * button, but the drill-down card has no Delete (the chars aren't
+ * already saved here) so the Save button is alone on the row. Once
+ * clicked or when opened on already-saved chars, the button paints
+ * into a muted disabled state mirroring the in-page popup's pt-added
+ * treatment so the user gets a single consistent "this is in your
+ * list" affordance across surfaces. */
+.vocab-card-save {
+  padding: 6px 16px;
+  border: 1px solid #93c5fd;
+  border-radius: 6px;
+  background: #dbeafe;
+  color: #1e3a8a;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.vocab-card-save:hover:not(:disabled) {
+  background: #bfdbfe;
+  border-color: #60a5fa;
+}
+
+.vocab-card-save.vocab-card-save-done {
+  opacity: 0.6;
+  cursor: default;
+}
+
+body[data-theme="dark"] .vocab-card-save {
+  background: #1e3a8a;
+  border-color: #60a5fa;
+  color: #bfdbfe;
+}
+
+body[data-theme="dark"] .vocab-card-save:hover:not(:disabled) {
+  background: #1e40af;
+  border-color: #93c5fd;
+}
+
+@media (prefers-color-scheme: dark) {
+  body[data-theme="auto"] .vocab-card-save {
+    background: #1e3a8a;
+    border-color: #60a5fa;
+    color: #bfdbfe;
+  }
+  body[data-theme="auto"] .vocab-card-save:hover:not(:disabled) {
+    background: #1e40af;
+    border-color: #93c5fd;
+  }
+}
+
+body[data-theme="sepia"] .vocab-card-save {
+  background: #f4ecd8;
+  border-color: #c8a97e;
+  color: #5b3a1c;
+}
+
+body[data-theme="sepia"] .vocab-card-save:hover:not(:disabled) {
+  background: #ecdfc1;
+  border-color: #a8855a;
+}
+
 /* ─── Vocab card examples ─────────────────────────────────────── */
 /* Captured sentences shown inside the expanded vocab card. Two
    slots max; each row renders the sentence with the target word

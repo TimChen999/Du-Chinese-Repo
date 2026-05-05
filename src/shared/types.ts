@@ -250,6 +250,18 @@ export type ExtensionMessage =
       sentence: string;
       translation: string;
     }
+  | {
+      /**
+       * Content script -> Service worker. Fires on first open of the
+       * click popup per (sentence, word) pair, when the targeted word
+       * is already in the user's vocab list. The service worker bumps
+       * `count` and `lastSeen` on the existing entry. No-op when the
+       * word is not saved — the +Vocab button is the only path to
+       * create new entries.
+       */
+      type: "BUMP_VIEW_COUNT";
+      chars: string;
+    }
   | { type: "OCR_START" }
   | { type: "OCR_START_SELECTION" }
   | { type: "REMOVE_WORD"; chars: string }

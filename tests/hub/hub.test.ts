@@ -16,6 +16,7 @@ import { mock } from "../test-helpers";
 vi.mock("../../src/background/vocab-store", () => ({
   getAllVocab: vi.fn(),
   clearVocab: vi.fn(),
+  recordWords: vi.fn(),
   removeWord: vi.fn(),
   removeWords: vi.fn(),
   setExampleTranslation: vi.fn(),
@@ -27,6 +28,7 @@ vi.mock("../../src/background/vocab-store", () => ({
 import {
   getAllVocab,
   clearVocab,
+  recordWords,
   removeWord,
   removeWords,
   setExampleTranslation,
@@ -37,6 +39,7 @@ import {
 
 const mockedGetAllVocab = getAllVocab as ReturnType<typeof vi.fn>;
 const mockedClearVocab = clearVocab as ReturnType<typeof vi.fn>;
+const mockedRecordWords = recordWords as ReturnType<typeof vi.fn>;
 const mockedRemoveWord = removeWord as ReturnType<typeof vi.fn>;
 const mockedRemoveWords = removeWords as ReturnType<typeof vi.fn>;
 const mockedSetExampleTranslation = setExampleTranslation as ReturnType<typeof vi.fn>;
@@ -190,6 +193,7 @@ async function loadHub() {
   vi.doMock("../../src/background/vocab-store", () => ({
     getAllVocab: mockedGetAllVocab,
     clearVocab: mockedClearVocab,
+    recordWords: mockedRecordWords,
     removeWord: mockedRemoveWord,
     removeWords: mockedRemoveWords,
     setExampleTranslation: mockedSetExampleTranslation,

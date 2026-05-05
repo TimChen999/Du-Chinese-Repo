@@ -132,6 +132,26 @@ export async function recordWords(
 }
 
 /**
+ * Increments the `count` ("times seen") field on an existing vocab
+ * entry without creating a new one. Used by the click popup's
+ * first-open-per-sentence view counter so opening the lookup popup on a
+ * word the user has already saved bumps its frequency. No-op when the
+ * word is not in the store — view bumps are reserved for already-saved
+ * words; an unsaved word still has to go through the explicit "+ Vocab"
+ * click to land in the store.
+ */
+export async function bumpViewCount(chars: string): Promise<void> {
+  if (!chars) return;
+  const result = await chrome.storage.local.get(STORAGE_KEY);
+  const store: VocabRecord = (result[STORAGE_KEY] as VocabRecord | undefined) ?? {};
+  const entry = store[chars];
+  if (!entry) return;
+  entry.count += 1;
+  entry.lastSeen = Date.now();
+  await chrome.storage.local.set({ [STORAGE_KEY]: store });
+}
+
+/**
  * Returns all recorded vocab entries as an array.
  * Returns an empty array if no store exists.
  */

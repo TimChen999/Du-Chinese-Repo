@@ -20,6 +20,7 @@ import {
   removeExample,
   setExampleTranslation,
   getAllVocab,
+  bumpViewCount,
 } from "./vocab-store";
 import {
   DEFAULT_SETTINGS,
@@ -221,6 +222,11 @@ chrome.runtime.onMessage.addListener(
         | { sentence: string; translation?: string }
         | undefined;
       handleRecordWord(word, example);
+      return;
+    }
+
+    if (message.type === "BUMP_VIEW_COUNT") {
+      bumpViewCount(message.chars as string);
       return;
     }
 

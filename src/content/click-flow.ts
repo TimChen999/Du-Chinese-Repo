@@ -50,6 +50,7 @@ import {
   setClickPopupDismissHandler,
   setClickPopupSpeakHandler,
   setClickPopupTtsEnabled,
+  setClickPopupWordViewHandler,
   setSentenceError,
   setSentenceText,
   showBootstrap,
@@ -57,6 +58,7 @@ import {
   upgradeWord,
   type StripWord,
 } from "./click-popup";
+import { isVocabSaved } from "../shared/vocab-saved-cache";
 import {
   cancelSpeaking,
   ensureVoicesLoaded,
@@ -171,6 +173,47 @@ type SentenceState =
 /** All sentences engaged in this tab. Persists for the page session. */
 const sentenceStates = new Map<string, SentenceState>();
 
+/**
+ * Per-sentence record of which already-saved words have already had
+ * their "times seen" count bumped during this page session. Lives at
+ * click-flow scope (not per-popup) because the user can dismiss + re-
+ * open the popup on the same sentence dozens of times while reading,
+ * and we don't want each re-open to inflate the seen count past what
+ * "times this sentence taught me this word" can fairly mean.
+ *
+ * Keyed by sentence text (matches sentenceStates) and never cleared —
+ * the page lifetime is the natural session boundary; a fresh navigation
+ * starts fresh because the module re-evaluates.
+ */
+const viewCountedBySentence = new Map<string, Set<string>>();
+
+/**
+ * Click-popup view handler. Fires on every popup open and every same-
+ * sentence retarget, deduped at the popup level so toggling between
+ * two words inside one popup only fires the handler once per word.
+ * Here we apply the page-session-wide dedup and forward to the SW so
+ * already-saved words have their `count` bumped exactly once per
+ * (sentence, word) pair per page session. Unsaved words are no-ops —
+ * the explicit "+ Vocab" path is still the only way to create new
+ * vocab entries.
+ */
+function handleWordViewed(chars: string, sentence: string): void {
+  if (!chars || !sentence) return;
+  let viewed = viewCountedBySentence.get(sentence);
+  if (!viewed) {
+    viewed = new Set();
+    viewCountedBySentence.set(sentence, viewed);
+  }
+  if (viewed.has(chars)) return;
+  viewed.add(chars);
+  if (!isVocabSaved(chars)) return;
+  try {
+    chrome.runtime.sendMessage({ type: "BUMP_VIEW_COUNT", chars });
+  } catch (err) {
+    console.warn("[click-flow] BUMP_VIEW_COUNT send failed:", err);
+  }
+}
+
 /** The sentence currently shown in the popup. Used to drop late LLM responses. */
 let currentSentence = "";
 let currentRequestId = 0;
@@ -218,6 +261,7 @@ export function initClickFlow(...docs: Document[]): void {
       currentSentenceAnchor = null;
     });
     setClickPopupSpeakHandler(handleSpeak);
+    setClickPopupWordViewHandler(handleWordViewed);
     void ensureVoicesLoaded();
 
     if (!sentenceProvider) {
