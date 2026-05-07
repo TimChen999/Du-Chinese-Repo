@@ -45,12 +45,14 @@ import {
   getPopupHostElement,
   isPopupOpen,
   isShowingSentence,
+  refreshBootstrapStrip,
   refreshPinyinStripActiveWord,
   retargetWord,
   setClickPopupDismissHandler,
   setClickPopupSpeakHandler,
   setClickPopupTtsEnabled,
   setClickPopupWordViewHandler,
+  setPopupSentenceText,
   setSentenceError,
   setSentenceText,
   showBootstrap,
@@ -70,6 +72,12 @@ import {
   translateChineseToEnglish,
 } from "../shared/translate-example";
 import { containsChinese } from "../shared/chinese-detect";
+import {
+  decodeForText,
+  getDecoderProgress,
+  initFontDecoder,
+  translatePua,
+} from "../shared/font-decoder";
 import type {
   ExtensionMessage,
   LLMSentenceWord,
@@ -253,6 +261,13 @@ export function initClickFlow(...docs: Document[]): void {
     if (isTranslatorAvailable()) {
       void prewarmTranslator();
     }
+    // Kick off the font-cipher decoder. No-op on regular pages (no PUA
+    // chars detected); on font-cipher pages (番茄小说 etc.) this OCRs the
+    // page's custom font once so subsequent hovers/clicks resolve the
+    // obfuscated chars. Cached per font URL across reloads.
+    void initFontDecoder().catch((err) => {
+      console.error("[click-flow] font-decoder init failed:", err);
+    });
 
     setClickPopupDismissHandler(() => {
       clearAllHighlights();
@@ -620,7 +635,9 @@ function findLlmWordAtOffset(
   for (const seg of segments) {
     assembled += seg.node.data.slice(seg.startOffset, seg.endOffset);
   }
-  if (assembled !== sentence.text) return null;
+  // Compare against rawText (DOM-equal) not text (PUA-decoded) so this
+  // assertion still holds on font-cipher pages.
+  if (assembled !== sentence.rawText) return null;
 
   let caretSentOffset = -1;
   let cursor = 0;
@@ -636,7 +653,7 @@ function findLlmWordAtOffset(
     }
     cursor += segLen;
   }
-  if (caretSentOffset < 0 || caretSentOffset >= sentence.text.length) return null;
+  if (caretSentOffset < 0 || caretSentOffset >= sentence.rawText.length) return null;
 
   let wordStart = 0;
   let matched: LLMSentenceWord | null = null;
@@ -705,11 +722,24 @@ async function commitClick(caret: CaretPosition): Promise<void> {
   const sentence = detectSentence(caret.node as Text, caret.offset, ownerDoc);
   if (!sentence) return;
 
+  // Note: on font-cipher pages, sentence.text and the chars under the
+  // caret may still be PUA-flavoured at this point — the decoder hasn't
+  // run yet. We deliberately DON'T await decodeForText() here so the
+  // popup can appear immediately (cipher font fallback in the popup's
+  // shadow DOM means PUA chars still render as the right glyph).
+  // upgradeAfterDecode() runs after the OCR batch resolves and updates
+  // the popup with real chars + fires the LLM with translated text.
+
   // Pick the word range using current state for this sentence.
   const wordRange = pickWordRangeOnClick(caret, sentence);
   if (!wordRange) return;
 
-  const word = wordRange.toString();
+  // wordRange is anchored in the source DOM, which on font-cipher pages
+  // contains PUA chars. Translate so downstream consumers (popup
+  // display, LLM call, sentenceStates key, retarget compare, vocab
+  // capture) see whatever activeMap currently knows. May still be PUA
+  // for chars not yet decoded — upgradeAfterDecode below patches them up.
+  const word = translatePua(wordRange.toString());
   if (!word) return;
 
   // ── Same-sentence retarget ────────────────────────────────────
@@ -842,18 +872,6 @@ async function commitClick(caret: CaretPosition): Promise<void> {
     return;
   }
 
-  // Bootstrap sentence translation via on-device translator (when
-  // available). Doesn't affect state — we don't promote to Hot here.
-  if (expectBootstrapTranslation) {
-    void translateChineseToEnglish(sentence.text).then((res) => {
-      if (!isShowingSentence(sentence.text)) return;
-      // Don't overwrite an LLM result if it landed first.
-      const state = sentenceStates.get(sentence.text);
-      if (state && state.kind === "hot") return;
-      if (res.ok) setSentenceText(res.translation, "bootstrap");
-    });
-  }
-
   // Fire the host-integration commit hook (reader uses this for
   // bookmark-anchor capture).
   if (onCommit && currentSentenceAnchor) {
@@ -868,6 +886,119 @@ async function commitClick(caret: CaretPosition): Promise<void> {
     } catch (err) {
       console.error("[click-flow] commit hook threw:", err);
     }
+  }
+
+  // Kick off any pending font-cipher decode for this sentence, then
+  // upgrade the popup + fire LLM / on-device translator. On regular
+  // pages decodeForText resolves immediately so the LLM call goes out
+  // with no observable delay; on cipher pages we wait for OCR so the
+  // LLM gets real Chinese instead of PUA garbage.
+  //
+  // Race against a timeout so a hung Tesseract worker (CSP block /
+  // network failure) doesn't leave the popup stuck in its loading state
+  // forever — after the timeout we proceed with whatever activeMap had,
+  // which on regular pages is correct and on cipher pages degrades to
+  // the existing pre-decode behaviour (PUA chars stay as PUA, popup
+  // shows them via the cipher-font fallback in shadow DOM).
+  const DECODE_BUDGET_MS = 30_000;
+  const decodeWithBudget = Promise.race([
+    decodeForText(sentence.rawText),
+    new Promise<void>((resolve) => setTimeout(resolve, DECODE_BUDGET_MS)),
+  ]);
+  void decodeWithBudget
+    .catch((err) => console.error("[click-flow] decode failed:", err))
+    .finally(() => {
+      upgradeAfterDecode({
+        sentence,
+        caret,
+        requestId,
+        expectLlm,
+        expectBootstrapTranslation,
+      });
+    });
+}
+
+interface UpgradeArgs {
+  sentence: SentenceResult;
+  caret: CaretPosition;
+  requestId: number;
+  expectLlm: boolean;
+  expectBootstrapTranslation: boolean;
+}
+
+/**
+ * Runs after decodeForText resolves. Re-translates the sentence with
+ * the (potentially newly-decoded) cipher map, migrates sentenceStates
+ * to the translated key, refreshes the popup's word tier, then fires
+ * the LLM + on-device translator with the real Chinese sentence. Bails
+ * if the popup has been dismissed or the user already moved to a
+ * different sentence in the meantime.
+ */
+function upgradeAfterDecode(args: UpgradeArgs): void {
+  const { sentence, caret, requestId, expectLlm,
+    expectBootstrapTranslation } = args;
+  if (currentRequestId !== requestId) return;
+  if (currentSentence !== sentence.text) return;
+  if (!isShowingSentence(sentence.text)) return;
+
+  const oldKey = sentence.text;
+  const newKey = translatePua(sentence.rawText);
+
+  // Migrate per-sentence state when the decode unlocked new chars.
+  if (newKey !== oldKey) {
+    const state = sentenceStates.get(oldKey);
+    if (state) {
+      sentenceStates.delete(oldKey);
+      sentenceStates.set(newKey, state);
+    }
+    const viewed = viewCountedBySentence.get(oldKey);
+    if (viewed) {
+      viewCountedBySentence.delete(oldKey);
+      viewCountedBySentence.set(newKey, viewed);
+    }
+    currentSentence = newKey;
+    sentence.text = newKey;
+    setPopupSentenceText(newKey);
+
+    // Re-pick the word range so it can widen to the proper word boundary
+    // now that the dictionary can match (e.g. 任 + 务 → 任务).
+    const newRange = pickWordRangeOnClick(caret, sentence);
+    let activeChars = "";
+    if (newRange) {
+      const newWord = translatePua(newRange.toString());
+      if (newWord) {
+        activeChars = newWord;
+        setWordHighlight(newRange);
+        if (currentSentenceAnchor) {
+          currentSentenceAnchor.wordRange = newRange.cloneRange();
+        }
+        const wordData = buildBootstrapWord(newWord);
+        retargetWord(
+          wordData,
+          newKey,
+          findLinkHref(caret.node),
+          findInteractiveTarget(caret.node),
+        );
+      }
+    }
+    // Refresh the strip so it picks up newly-translated characters that
+    // weren't decoded when the popup first opened. Skipped when no
+    // segmentation is available (dictionary still loading).
+    const newStripWords = bootstrapSentenceWords(newKey);
+    if (newStripWords.length > 0) {
+      refreshBootstrapStrip(newStripWords, activeChars);
+    }
+  }
+
+  // Bootstrap sentence translation via on-device translator (when
+  // available). Doesn't affect state — we don't promote to Hot here.
+  if (expectBootstrapTranslation) {
+    void translateChineseToEnglish(sentence.text).then((res) => {
+      if (!isShowingSentence(sentence.text)) return;
+      const state = sentenceStates.get(sentence.text);
+      if (state && state.kind === "hot") return;
+      if (res.ok) setSentenceText(res.translation, "bootstrap");
+    });
   }
 
   // Ask the LLM for the Hot upgrade through the registered provider.
@@ -981,14 +1112,46 @@ function buildBootstrapWord(word: string): {
     return bootstrapWordFromHit(hit, settings.pinyinStyle);
   }
   // Single character that wasn't in the dictionary; pick a degraded
-  // representation so the popup still has something useful.
+  // representation so the popup still has something useful. On
+  // font-cipher pages the chars may still be PUA at this point —
+  // upgradeAfterDecode will retargetWord once OCR resolves and a
+  // dictionary lookup against the real char succeeds.
   return {
     chars: word,
     pinyin: "",
-    gloss: isDictionaryReady()
-      ? "(no dictionary entry)"
-      : "(loading dictionary…)",
+    gloss: !isDictionaryReady()
+      ? "(loading dictionary…)"
+      : containsPuaChar(word)
+        ? puaGlossForCurrentDecoderState()
+        : "(no dictionary entry)",
   };
+}
+
+/**
+ * Returns the right placeholder gloss for a clicked PUA char based on
+ * what the font decoder is currently doing. While a batch is in flight
+ * we say "(decoding…)"; once the decoder has settled (ready / error /
+ * skipped) we know OCR isn't going to fill this char in, so we surface
+ * a clear "(unknown to OCR)" instead of leaving the misleading dots.
+ */
+function puaGlossForCurrentDecoderState(): string {
+  const phase = getDecoderProgress().phase;
+  if (phase === "decoding" || phase === "warming-ocr" || phase === "scanning") {
+    return "(decoding…)";
+  }
+  return "(unknown to OCR)";
+}
+
+/** True when any char in `s` lies in the Private-Use Area we treat as
+ *  cipher-eligible. Used for popup placeholder text so a clicked PUA
+ *  char shows a "(decoding…)" gloss while OCR is in flight, instead of
+ *  the misleading "(no dictionary entry)". */
+function containsPuaChar(s: string): boolean {
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c >= 0xe000 && c <= 0xf8ff) return true;
+  }
+  return false;
 }
 
 // ─── Incoming messages ─────────────────────────────────────────────
@@ -1135,7 +1298,7 @@ export function triggerFromSelection(selection: Selection | null): void {
   // offset within this text node.
   let off = range.startOffset;
   const data = textNode.data;
-  while (off < data.length && !/[㐀-䶿一-鿿]/.test(data[off])) {
+  while (off < data.length && !containsChinese(data[off])) {
     off++;
   }
   if (off >= data.length) return;
@@ -1158,7 +1321,7 @@ export function triggerFromSelection(selection: Selection | null): void {
 export function triggerFromTextNode(textNode: Text, offset = 0): void {
   const data = textNode.data;
   let off = offset;
-  while (off < data.length && !/[㐀-䶿一-鿿]/.test(data[off])) {
+  while (off < data.length && !containsChinese(data[off])) {
     off++;
   }
   if (off >= data.length) return;

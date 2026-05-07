@@ -4,14 +4,15 @@
   "description": "Chrome extension for Chinese text pinyin annotations and translations",
   "private": true,
   "scripts": {
-    "postinstall": "node scripts/download-cedict.mjs && node scripts/download-makemeahanzi.mjs && node scripts/build-phonetics.mjs",
-    "predev": "node scripts/download-cedict.mjs && node scripts/download-makemeahanzi.mjs && node scripts/build-phonetics.mjs",
-    "prebuild": "node scripts/download-cedict.mjs && node scripts/download-makemeahanzi.mjs && node scripts/build-phonetics.mjs",
+    "postinstall": "node scripts/download-cedict.mjs && node scripts/download-makemeahanzi.mjs && node scripts/build-phonetics.mjs && node scripts/download-tesseract.mjs",
+    "predev": "node scripts/download-cedict.mjs && node scripts/download-makemeahanzi.mjs && node scripts/build-phonetics.mjs && node scripts/download-tesseract.mjs",
+    "prebuild": "node scripts/download-cedict.mjs && node scripts/download-makemeahanzi.mjs && node scripts/build-phonetics.mjs && node scripts/download-tesseract.mjs",
     "dev": "vite build --watch --mode development",
     "build": "vite build",
     "download:cedict": "node scripts/download-cedict.mjs",
     "download:components": "node scripts/download-makemeahanzi.mjs",
     "build:phonetics": "node scripts/build-phonetics.mjs",
+    "download:tesseract": "node scripts/download-tesseract.mjs",
     "test": "vitest run",
     "test:watch": "vitest --watch"
   },

@@ -40,6 +40,10 @@ import {
   initVocabSavedCache,
   isVocabSaved,
 } from "../shared/vocab-saved-cache";
+import {
+  localTesseractPaths,
+  onDecoderProgress,
+} from "../shared/font-decoder";
 
 // ─── Settings cache (mirrored to click-flow) ──────────────────────
 
@@ -65,6 +69,83 @@ initVocabSavedCache();
 setClickPopupVocabSavedChecker(isVocabSaved);
 setClickPopupVocabCallback(handleVocabCapture);
 initClickFlow();
+
+// ─── Font-decoder progress toast ──────────────────────────────────
+//
+// Surfaces a small bottom-right indicator while the page's font cipher
+// is being OCR-decoded. Idle/skipped/cached pages never see anything;
+// only fresh decodes (~3-8s on 番茄 chapters with ~200-400 unique
+// glyphs) get a toast. Idempotent across iframes since we install one
+// listener at content-script init.
+
+let fontDecoderToast: HTMLElement | null = null;
+let fontDecoderToastHideTimer: ReturnType<typeof setTimeout> | null = null;
+/**
+ * True once we've shown the "Decoded ✓" confirmation toast in this
+ * page session. Subsequent successful decodes silently dismiss the
+ * toast instead of flashing the checkmark again — which would otherwise
+ * fire once per fresh sentence and become noise. Reset to false when
+ * a decode fails so the next success surfaces the checkmark again.
+ */
+let hasShownDecodedConfirmation = false;
+
+onDecoderProgress((p) => {
+  // Idle / skipped (regular pages) and the silent post-decode "ready"
+  // refresh produce no toast. We only surface activity when an actual
+  // decode batch is running.
+  if (p.phase === "idle" || p.phase === "skipped") return;
+  if (p.phase === "ready" && !fontDecoderToast) return;
+
+  if (!fontDecoderToast && p.phase !== "ready" && p.phase !== "error") {
+    fontDecoderToast = document.createElement("div");
+    fontDecoderToast.className = "hg-ocr-loading";
+    fontDecoderToast.style.right = "16px";
+    fontDecoderToast.style.bottom = "16px";
+    fontDecoderToast.style.left = "auto";
+    fontDecoderToast.style.top = "auto";
+    document.body.appendChild(fontDecoderToast);
+  }
+  if (!fontDecoderToast) return;
+
+  if (p.phase === "scanning") {
+    fontDecoderToast.textContent = "Detecting page font…";
+  } else if (p.phase === "warming-ocr") {
+    fontDecoderToast.textContent = p.detail
+      ? `Loading OCR engine — ${p.detail}…`
+      : "Loading OCR engine…";
+  } else if (p.phase === "decoding") {
+    fontDecoderToast.textContent =
+      p.total > 0
+        ? `Decoding ${p.total} glyph${p.total === 1 ? "" : "s"}…`
+        : "Decoding glyphs…";
+  } else if (p.phase === "ready") {
+    if (hasShownDecodedConfirmation) {
+      // Subsequent decodes after the first successful one don't get a
+      // checkmark flash — just silently clear the toast.
+      if (fontDecoderToastHideTimer) clearTimeout(fontDecoderToastHideTimer);
+      fontDecoderToast.remove();
+      fontDecoderToast = null;
+    } else {
+      fontDecoderToast.textContent = "Decoded ✓";
+      hasShownDecodedConfirmation = true;
+      if (fontDecoderToastHideTimer) clearTimeout(fontDecoderToastHideTimer);
+      fontDecoderToastHideTimer = setTimeout(() => {
+        fontDecoderToast?.remove();
+        fontDecoderToast = null;
+      }, 1200);
+    }
+  } else if (p.phase === "error") {
+    fontDecoderToast.textContent = "Font decode failed";
+    // Reset so the next success re-arms the confirmation toast: the
+    // user benefits from seeing it once more after a recovery.
+    hasShownDecodedConfirmation = false;
+    if (fontDecoderToastHideTimer) clearTimeout(fontDecoderToastHideTimer);
+    fontDecoderToastHideTimer = setTimeout(() => {
+      fontDecoderToast?.remove();
+      fontDecoderToast = null;
+    }, 3000);
+  }
+});
 
 // ─── Incoming message listener ────────────────────────────────────
 
@@ -227,7 +308,13 @@ function cropScreenshot(
 
 async function runOCR(canvas: HTMLCanvasElement): Promise<string | null> {
   const { createWorker } = await import("tesseract.js");
-  const worker = await createWorker("chi_sim");
+  // Route Tesseract to the locally-bundled assets so a host page's CSP
+  // can't block the OCR worker / WASM load. See font-decoder.ts.
+  const worker = await createWorker(
+    "chi_sim",
+    undefined,
+    localTesseractPaths(),
+  );
   try {
     const result = await worker.recognize(canvas);
     const text = result.data.text.trim().replace(/\n+/g, " ");

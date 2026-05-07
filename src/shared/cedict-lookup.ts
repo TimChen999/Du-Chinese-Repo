@@ -26,6 +26,7 @@ import type {
   CedictModifier,
   CedictRef,
 } from "./cedict-types";
+import { translatePua } from "./font-decoder";
 
 // ─── Module state ──────────────────────────────────────────────────
 
@@ -113,9 +114,15 @@ export function findLongest(
 ): CedictHit | null {
   if (!dictionary || !text) return null;
 
-  const limit = Math.min(maxChars, text.length);
+  // PUA chars from font-cipher pages are translated to their decoded
+  // real chars before dictionary lookup. Translation is a 1:1 char
+  // substitution, so `length` (slice index) still maps onto the source
+  // string's offsets — caret/range math is unchanged. The returned
+  // `word` is the real-char form, which is what the popup renders.
+  const translated = translatePua(text);
+  const limit = Math.min(maxChars, translated.length);
   for (let len = limit; len >= 1; len--) {
-    const candidate = text.slice(0, len);
+    const candidate = translated.slice(0, len);
     const entries = dictionary.get(candidate);
     if (entries && entries.length > 0) {
       return { word: candidate, length: len, entries };
@@ -132,7 +139,7 @@ export function findLongest(
  */
 export function lookupExact(headword: string): CedictEntry[] | null {
   if (!dictionary || !headword) return null;
-  return dictionary.get(headword) ?? null;
+  return dictionary.get(translatePua(headword)) ?? null;
 }
 
 /**
@@ -626,6 +633,9 @@ export function segmentSentence(
 ): Array<{ text: string; pinyin: string }> {
   const out: Array<{ text: string; pinyin: string }> = [];
   if (!sentence) return out;
+  // Decode PUA chars first so the segmenter sees real CJK and produces
+  // correct word boundaries on font-cipher pages.
+  sentence = translatePua(sentence);
 
   let i = 0;
   while (i < sentence.length) {

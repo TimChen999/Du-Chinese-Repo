@@ -12,14 +12,32 @@
  */
 
 import { CHINESE_REGEX, MAX_CONTEXT_LENGTH } from "./constants";
+import {
+  isDecodablePuaChar,
+  isPossiblyCipheredChar,
+} from "./font-decoder";
 
 /**
  * Returns true if the string contains at least one CJK Unified Ideograph.
  * Used by the content script's mouseup handler to decide whether to
  * trigger the pinyin flow. (SPEC.md Section 2.1)
+ *
+ * Also returns true for:
+ *   - PUA chars already resolved by the font decoder
+ *     (`isDecodablePuaChar`), and
+ *   - PUA chars on a page known to use a cipher font even before any
+ *     OCR has run (`isPossiblyCipheredChar`) — click-flow then runs
+ *     decodeForText() to fill them in on the fly. Without this hook
+ *     the user's very first click on an obfuscated char would be
+ *     silently rejected.
  */
 export function containsChinese(text: string): boolean {
-  return CHINESE_REGEX.test(text);
+  if (!text) return false;
+  if (CHINESE_REGEX.test(text)) return true;
+  for (const ch of text) {
+    if (isDecodablePuaChar(ch) || isPossiblyCipheredChar(ch)) return true;
+  }
+  return false;
 }
 
 /**

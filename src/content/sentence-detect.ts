@@ -22,10 +22,24 @@ import {
   SENTENCE_MAX_CHARS,
   SENTENCE_SOFT_LIMIT_CHARS,
 } from "../shared/constants";
+import { translatePua } from "../shared/font-decoder";
 
 export interface SentenceResult {
-  /** Full sentence text. */
+  /**
+   * Full sentence text. On font-cipher pages this is the translated
+   * (PUA → real CJK) form so the popup, LLM, and dictionary all see
+   * real Chinese. Use `rawText` when you need to compare against DOM
+   * text-node data (which still contains the original PUA chars).
+   */
   text: string;
+  /**
+   * DOM-equal copy of the sentence — every char is exactly what the
+   * source text node holds. Equal to `text` on regular pages; differs
+   * only when the font-decoder rewrote PUA chars into real CJK. Used
+   * by offset-math callers (e.g. findLlmWordAtOffset) that reassemble
+   * the sentence from text-node slices and need byte-for-byte equality.
+   */
+  rawText: string;
   /** DOM Range covering the sentence (cross-text-node). */
   range: Range;
   /**
@@ -58,13 +72,13 @@ export function detectSentence(
   const primary = walkOnce(textNode, offset, SENTENCE_DELIMS, doc);
   if (!primary) return null;
 
-  if (primary.text.length <= SENTENCE_SOFT_LIMIT_CHARS) return primary;
+  if (primary.rawText.length <= SENTENCE_SOFT_LIMIT_CHARS) return primary;
 
   // Soft-limit fallback: include commas as additional delimiters.
   const expanded = new Set<string>(SENTENCE_DELIMS);
   for (const d of SENTENCE_CLAUSE_DELIMS) expanded.add(d);
   const clause = walkOnce(textNode, offset, expanded, doc);
-  if (clause && clause.text.length < primary.text.length) {
+  if (clause && clause.rawText.length < primary.rawText.length) {
     return { ...clause, trimmedToClause: true };
   }
   // Clause walk didn't shrink it (no commas in range); keep primary.
@@ -92,8 +106,8 @@ function walkOnce(
   const { node: startNode, offset: startOffset, prefix } = backward;
   const { node: endNode, offset: endOffset, suffix } = forward;
 
-  const text = prefix + suffix;
-  if (!text || text.length === 0) return null;
+  const rawText = prefix + suffix;
+  if (!rawText || rawText.length === 0) return null;
 
   const range = doc.createRange();
   try {
@@ -102,7 +116,11 @@ function walkOnce(
   } catch {
     return null;
   }
-  return { text, range };
+  // Translate PUA chars (font-cipher pages) so callers can show real
+  // Chinese in the popup and ship real Chinese to the LLM. rawText is
+  // preserved for offset-math against text-node `.data`.
+  const text = translatePua(rawText);
+  return { text, rawText, range };
 }
 
 // ─── Backward walk ─────────────────────────────────────────────────

@@ -34,6 +34,7 @@ import {
   lookupExact,
 } from "../shared/cedict-lookup";
 import type { CedictHit } from "../shared/cedict-types";
+import { getCipherFontInfo } from "../shared/font-decoder";
 
 type ViewMode = "translation" | "pinyin";
 
@@ -423,6 +424,29 @@ export function upgradeStripWithLlm(
 }
 
 /**
+ * Rebuilds the pinyin strip from a fresh bootstrap segmentation. Used
+ * by the click-flow's font-cipher upgrade path: when the per-sentence
+ * decoder finishes after the popup opened, the strip's original cells
+ * are stale (built from a sentence that still contained PUA gibberish),
+ * and we want to swap in cells that reflect the now-translated sentence.
+ *
+ * Drops non-CJK runs the same way upgradeStripWithLlm does so the strip
+ * stays compact.
+ */
+export function refreshBootstrapStrip(
+  sentenceWords: StripWord[],
+  activeChars: string,
+): void {
+  if (!popupEl) return;
+  const view = popupEl.querySelector(".pt-view-pinyin");
+  if (!view) return;
+  const cjkWords = sentenceWords.filter((w) => /[一-鿿㐀-䶿]/.test(w.text));
+  while (view.firstChild) view.removeChild(view.firstChild);
+  for (const w of cjkWords) view.appendChild(makeStripRuby(w, activeChars));
+  repositionPopup();
+}
+
+/**
  * Updates the "active" highlight inside the pinyin view to point at
  * `chars`. Called on retarget so the strip reflects which word is in
  * the word tier.
@@ -519,6 +543,19 @@ export function getCurrentSentence(): string {
   return currentSentenceText;
 }
 
+/**
+ * Replaces the popup's tracked sentence text. Used when a font-cipher
+ * decode finishes after the popup opened: the original (PUA-flavoured)
+ * sentence becomes a fully-translated one, and isShowingSentence /
+ * sentenceStates routing keys need to switch to the new value or LLM
+ * responses keyed by translated text get dropped as "stale". The popup
+ * DOM isn't rerendered here — call retargetWord / setSentenceText for
+ * the visible updates. */
+export function setPopupSentenceText(next: string): void {
+  if (!popupEl || !next) return;
+  currentSentenceText = next;
+}
+
 /** Returns the chars currently shown in the word tier, or null. */
 export function getCurrentWordChars(): string | null {
   if (!popupEl) return null;
@@ -548,6 +585,7 @@ function ensureRoot(): ShadowRoot {
   if (existing && existing.shadowRoot) {
     hostElement = existing as HTMLElement;
     shadowRoot = existing.shadowRoot;
+    ensureCipherFontInjected(shadowRoot);
     return shadowRoot;
   }
   hostElement = document.createElement("div");
@@ -557,7 +595,41 @@ function ensureRoot(): ShadowRoot {
   const style = document.createElement("style");
   style.textContent = overlayStyles;
   shadowRoot.appendChild(style);
+  ensureCipherFontInjected(shadowRoot);
   return shadowRoot;
+}
+
+/**
+ * Mirrors the page's cipher @font-face into the popup's Shadow DOM
+ * (idempotent) so that any PUA char that the decoder hasn't yet
+ * resolved still renders as the *visible* glyph on the host page,
+ * instead of a tofu / .notdef box. The popup's font-family stack
+ * already prefers system fonts, so real CJK chars render via system —
+ * the cipher font is only consulted as a fallback for PUA codepoints
+ * the system fonts don't have.
+ *
+ * No-op when the page isn't using a cipher font.
+ */
+function ensureCipherFontInjected(root: ShadowRoot): void {
+  const info = getCipherFontInfo();
+  if (!info || !info.src) return;
+  if (root.getElementById?.("hg-cipher-font") || root.querySelector?.("#hg-cipher-font")) {
+    return;
+  }
+  const style = document.createElement("style");
+  style.id = "hg-cipher-font";
+  // url(...) values must be wrapped exactly as the page wrote them; the
+  // simple url() form is universally accepted by Chrome. The follow-up
+  // .pt-popup rule appends the cipher font as a *fallback* — system
+  // fonts still render real CJK; only PUA codepoints (which the system
+  // fonts don't have a glyph for) fall through to the cipher font.
+  style.textContent =
+    `@font-face { font-family: "${info.family}"; ` +
+    `src: url(${JSON.stringify(info.src)}); font-display: block; }\n` +
+    `.pt-popup, .pt-popup * { font-family: -apple-system, ` +
+    `BlinkMacSystemFont, "Segoe UI", Roboto, "${info.family}", ` +
+    `sans-serif; }`;
+  root.appendChild(style);
 }
 
 function removeExistingPopup(): void {
