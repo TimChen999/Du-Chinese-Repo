@@ -385,6 +385,66 @@ function findLinkHref(node: Node | null): string | null {
   return /^https?:\/\//i.test(href) ? href : null;
 }
 
+/**
+ * CSS selector for elements whose native click activation the popup
+ * exposes via the "▶ <label>" button. Mirrors the standard set of
+ * HTML interactive controls plus common ARIA roles for custom widgets.
+ * Excludes `a[href]` — those flow through findLinkHref / "Open link".
+ */
+const INTERACTIVE_TARGET_SELECTOR =
+  'button, input, select, textarea, summary, label, ' +
+  '[role="button"], [role="link"], [role="tab"], [role="menuitem"], ' +
+  '[role="menuitemcheckbox"], [role="menuitemradio"], [role="checkbox"], ' +
+  '[role="radio"], [role="switch"], [role="option"]';
+
+/**
+ * If the caret node sits inside an interactive UI control that ISN'T a
+ * link, returns that element. Used by the popup to render a "▶ <label>"
+ * button that re-fires the click on the underlying control — the
+ * click-flow's preventDefault() otherwise swallows native activation.
+ *
+ * Two-tier detection, walking ancestors bottom-up so the closest
+ * affordance wins:
+ *   1. Standard / ARIA controls — anything matching the selector above.
+ *   2. CSS-styled clickables — `<div>` / `<span>` filters and buttons
+ *      where the site signals interactivity via `cursor: pointer`. This
+ *      catches modern framework UIs (Vue/React) where filter chips
+ *      aren't real `<button>` elements.
+ *
+ * Returns null when an `<a href>` ancestor sits between the caret and
+ * the match so links keep their "Open link" path and the two
+ * affordances stay mutually exclusive.
+ */
+function findInteractiveTarget(node: Node | null): HTMLElement | null {
+  if (!node) return null;
+  const start =
+    node.nodeType === Node.ELEMENT_NODE
+      ? (node as Element)
+      : node.parentElement;
+  if (!start) return null;
+  const win = (start.ownerDocument?.defaultView ?? window) as Window;
+
+  let cur: Element | null = start;
+  let hops = 0;
+  while (cur && hops < 12) {
+    // Bail on `<a href>` so the link path takes over.
+    if (cur.tagName === "A" && cur.hasAttribute("href")) return null;
+    if (cur.matches?.(INTERACTIVE_TARGET_SELECTOR)) {
+      return cur as HTMLElement;
+    }
+    try {
+      if (win.getComputedStyle(cur).cursor === "pointer") {
+        return cur as HTMLElement;
+      }
+    } catch {
+      // getComputedStyle can throw for orphaned elements; skip.
+    }
+    cur = cur.parentElement;
+    hops++;
+  }
+  return null;
+}
+
 /** True when the event target is inside an ancestor opted out of
  *  click-flow via the `data-no-clickflow` attribute. Used by the
  *  reader's bookmark sidebar so rows containing Chinese text remain
@@ -683,10 +743,16 @@ async function commitClick(caret: CaretPosition): Promise<void> {
     } else {
       wordData = buildBootstrapWord(word);
     }
-    // The link is a property of where the user clicked, not the word —
-    // re-resolve it for the new caret so retarget shows/hides the
-    // "Open link" button to match the new click target.
-    retargetWord(wordData, sentence.text, findLinkHref(caret.node));
+    // The link / interactive target are properties of where the user
+    // clicked, not the word — re-resolve them for the new caret so
+    // retarget shows/hides the "Open link" / "▶ <label>" button to
+    // match the new click target.
+    retargetWord(
+      wordData,
+      sentence.text,
+      findLinkHref(caret.node),
+      findInteractiveTarget(caret.node),
+    );
     refreshPinyinStripActiveWord(word);
 
     // Notify the host so the bookmark anchor follows the newly clicked
@@ -758,6 +824,7 @@ async function commitClick(caret: CaretPosition): Promise<void> {
     // closest match or be silent — no crash, no error).
     ttsEnabled: settings.ttsEnabled,
     linkHref: findLinkHref(caret.node),
+    interactiveTarget: findInteractiveTarget(caret.node),
   });
 
   currentSentence = sentence.text;

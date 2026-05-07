@@ -209,6 +209,15 @@ export interface ShowBootstrapArgs {
    * link navigation).
    */
   linkHref?: string | null;
+  /**
+   * Closest interactive element ancestor (button, [role="button"],
+   * input, etc.) of the clicked word, or undefined when the click
+   * landed on plain text. When set, the actions row renders an
+   * extra button that re-fires the original click on that element
+   * (the click-flow's preventDefault() otherwise eats native button
+   * activation). `<a href>` is excluded — those use linkHref.
+   */
+  interactiveTarget?: HTMLElement | null;
 }
 
 /**
@@ -243,7 +252,14 @@ export function showBootstrap(args: ShowBootstrapArgs): void {
     gloss.textContent = args.word.gloss;
     wordTier.appendChild(gloss);
   }
-  wordTier.appendChild(makeActionsRow(args.word, args.sentence, args.linkHref ?? null));
+  wordTier.appendChild(
+    makeActionsRow(
+      args.word,
+      args.sentence,
+      args.linkHref ?? null,
+      args.interactiveTarget ?? null,
+    ),
+  );
 
   popup.appendChild(wordTier);
 
@@ -434,6 +450,7 @@ export function retargetWord(
   word: { chars: string; pinyin: string; gloss: string },
   sentence: string,
   linkHref: string | null = null,
+  interactiveTarget: HTMLElement | null = null,
 ): void {
   if (!popupEl) return;
   const tier = popupEl.querySelector(".pt-word-tier");
@@ -450,7 +467,7 @@ export function retargetWord(
     gloss.textContent = word.gloss;
     tier.appendChild(gloss);
   }
-  tier.appendChild(makeActionsRow(word, sentence, linkHref));
+  tier.appendChild(makeActionsRow(word, sentence, linkHref, interactiveTarget));
   // Same-sentence retarget — announce the new word so the host can
   // bump count if applicable. Host dedup drops repeats.
   notifyWordViewed(word.chars, sentence);
@@ -592,6 +609,7 @@ function makeActionsRow(
   word: { chars: string; pinyin: string; gloss: string },
   sentence: string,
   linkHref: string | null,
+  interactiveTarget: HTMLElement | null,
 ): HTMLElement {
   const row = document.createElement("div");
   row.className = "pt-actions";
@@ -636,6 +654,24 @@ function makeActionsRow(
       dismiss();
     });
     row.appendChild(linkBtn);
+  } else if (interactiveTarget) {
+    // Sibling affordance to "Open link": when the click landed inside
+    // a button / [role="button"] / input / similar, render a button
+    // that re-fires the original click on that element. The click-flow
+    // preventDefault'd the original event so this is the only way the
+    // user can both look up the word AND activate the underlying control.
+    const label = interactiveActionLabel(interactiveTarget);
+    const clickBtn = document.createElement("button");
+    clickBtn.className = "pt-action-btn";
+    clickBtn.type = "button";
+    clickBtn.textContent = `▶ ${label}`;
+    clickBtn.setAttribute("aria-label", label);
+    clickBtn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      activateInteractiveTarget(interactiveTarget);
+      dismiss();
+    });
+    row.appendChild(clickBtn);
   }
 
   // CC-CEDICT "definition card" affordance. Shown whenever the headword
@@ -663,6 +699,50 @@ function makeActionsRow(
   }
 
   return row;
+}
+
+/**
+ * Picks a short, human-readable label for the interactive-target
+ * action button. Prefers the element's accessible name (aria-label,
+ * trimmed text content) but falls back to a generic label when the
+ * element has no accessible text — keeps the button's intent clear
+ * without leaking long inner-text dumps into the action row.
+ */
+function interactiveActionLabel(el: HTMLElement): string {
+  const aria = el.getAttribute("aria-label")?.trim();
+  if (aria) return shortLabel(aria);
+  const text = (el.textContent || "").trim();
+  if (text) return shortLabel(text);
+  const tag = el.tagName.toLowerCase();
+  if (tag === "input") {
+    const t = (el as HTMLInputElement).type || "input";
+    if (t === "submit" || t === "button") {
+      const v = (el as HTMLInputElement).value?.trim();
+      if (v) return shortLabel(v);
+    }
+    return `Activate ${t}`;
+  }
+  return "Activate";
+}
+
+function shortLabel(s: string): string {
+  const collapsed = s.replace(/\s+/g, " ").trim();
+  return collapsed.length > 24 ? collapsed.slice(0, 23) + "…" : collapsed;
+}
+
+/**
+ * Re-fires the click on the underlying interactive element so the
+ * page's own handler runs. `.click()` covers buttons, inputs,
+ * [role="button"]-with-handler patterns, and labels-for-checkboxes.
+ * Wrapped so a thrown handler doesn't crash the popup-dismiss path.
+ */
+function activateInteractiveTarget(el: HTMLElement): void {
+  try {
+    if (typeof el.focus === "function") el.focus();
+    el.click();
+  } catch (err) {
+    console.error("[click-popup] activate target threw:", err);
+  }
 }
 
 function toggleAltReadings(

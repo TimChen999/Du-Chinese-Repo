@@ -547,7 +547,8 @@
 
 .pt-popup .pt-add-vocab-btn,
 .pt-popup .pt-alt-btn,
-.pt-popup .pt-link-btn {
+.pt-popup .pt-link-btn,
+.pt-popup .pt-action-btn {
   border: 0;
   background: rgba(99, 102, 241, 0.15);
   color: inherit;
@@ -560,7 +561,8 @@
 
 .pt-popup .pt-add-vocab-btn:hover:not(:disabled),
 .pt-popup .pt-alt-btn:hover,
-.pt-popup .pt-link-btn:hover {
+.pt-popup .pt-link-btn:hover,
+.pt-popup .pt-action-btn:hover {
   background: rgba(99, 102, 241, 0.28);
 }
 
@@ -853,6 +855,7 @@
 .pt-popup.hg-dark .pt-add-vocab-btn,
 .pt-popup.hg-dark .pt-alt-btn,
 .pt-popup.hg-dark .pt-link-btn,
+.pt-popup.hg-dark .pt-action-btn,
 .pt-popup.hg-dark .pt-view-segmented {
   background: rgba(165, 180, 252, 0.16);
 }
@@ -872,6 +875,7 @@
 .pt-popup.hg-sepia .pt-add-vocab-btn,
 .pt-popup.hg-sepia .pt-alt-btn,
 .pt-popup.hg-sepia .pt-link-btn,
+.pt-popup.hg-sepia .pt-action-btn,
 .pt-popup.hg-sepia .pt-view-segmented {
   background: rgba(180, 130, 70, 0.18);
 }
