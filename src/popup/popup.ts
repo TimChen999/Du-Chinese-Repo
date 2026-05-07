@@ -75,6 +75,7 @@ function getElements() {
     vocabList: document.getElementById("vocab-list") as HTMLDivElement,
     refreshModels: document.getElementById("refresh-models") as HTMLButtonElement,
     ocrBtn: document.getElementById("ocr-btn") as HTMLButtonElement,
+    pageDecodeBtn: document.getElementById("page-decode-btn") as HTMLButtonElement,
     libraryBtn: document.getElementById("library-btn") as HTMLButtonElement,
   };
 }
@@ -511,6 +512,11 @@ export async function initPopup(): Promise<void> {
 
   els.ocrBtn.addEventListener("click", () => {
     chrome.runtime.sendMessage({ type: "OCR_START" });
+    window.close();
+  });
+
+  els.pageDecodeBtn.addEventListener("click", () => {
+    chrome.runtime.sendMessage({ type: "PAGE_DECODE_START" });
     window.close();
   });
 

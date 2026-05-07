@@ -25,6 +25,7 @@ import type {
   Theme,
 } from "../shared/types";
 import { startOCRSelection } from "./ocr-selection";
+import { runPageDecode, dismissPageOverlay } from "./page-overlay";
 import {
   initClickFlow,
   setClickFlowSettings,
@@ -81,6 +82,18 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage) => {
       break;
     case "OCR_CAPTURE_RESULT":
       handleOCRCaptureResult(message.dataUrl);
+      break;
+    case "PAGE_DECODE_BEGIN":
+      // Clear any prior overlay, then ask the service worker for a
+      // fresh viewport screenshot. PAGE_DECODE_CAPTURE_RESULT lands
+      // in this listener and feeds runPageDecode().
+      dismissPageOverlay();
+      chrome.runtime.sendMessage({ type: "PAGE_DECODE_CAPTURE_REQUEST" });
+      break;
+    case "PAGE_DECODE_CAPTURE_RESULT":
+      if (message.dataUrl) {
+        void runPageDecode(message.dataUrl);
+      }
       break;
   }
 });

@@ -450,24 +450,33 @@ hr.section-divider {
   color: #92400e;
 }
 
-/* ─── OCR button ─────────────────────────────────────────────── */
+/* ─── OCR action row ─────────────────────────────────────────── */
 
-#ocr-btn {
-  width: 100%;
-  padding: 8px;
+.ocr-action-row {
+  display: flex;
+  gap: 8px;
   margin-bottom: 12px;
+}
+
+.ocr-action-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 6px;
   border: 1px solid #3b82f6;
   border-radius: 4px;
   background: transparent;
   color: #3b82f6;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
+  line-height: 1.2;
 }
-
-#ocr-btn:hover {
-  background: rgba(59, 130, 246, 0.08);
-}
+.ocr-action-btn:hover { background: rgba(59, 130, 246, 0.08); }
+.ocr-action-btn svg { display: block; }
 
 /* ─── Library button ────────────────────────────────────────── */
 
@@ -728,12 +737,12 @@ body[data-theme="dark"] .example {
   color: #9ca3af;
 }
 
-body[data-theme="dark"] #ocr-btn {
+body[data-theme="dark"] .ocr-action-btn {
   border-color: #60a5fa;
   color: #60a5fa;
 }
 
-body[data-theme="dark"] #ocr-btn:hover {
+body[data-theme="dark"] .ocr-action-btn:hover {
   background: rgba(96, 165, 250, 0.12);
 }
 
@@ -990,12 +999,12 @@ body[data-theme="sepia"] .example {
   color: #8b7355;
 }
 
-body[data-theme="sepia"] #ocr-btn {
+body[data-theme="sepia"] .ocr-action-btn {
   border-color: #b8860b;
   color: #b8860b;
 }
 
-body[data-theme="sepia"] #ocr-btn:hover {
+body[data-theme="sepia"] .ocr-action-btn:hover {
   background: rgba(184, 134, 11, 0.12);
 }
 

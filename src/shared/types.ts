@@ -267,4 +267,8 @@ export type ExtensionMessage =
   | { type: "REMOVE_WORD"; chars: string }
   | { type: "REMOVE_EXAMPLE"; chars: string; index: number }
   | { type: "OCR_CAPTURE_REQUEST"; rect: { x: number; y: number; width: number; height: number } }
-  | { type: "OCR_CAPTURE_RESULT"; dataUrl: string };
+  | { type: "OCR_CAPTURE_RESULT"; dataUrl: string }
+  | { type: "PAGE_DECODE_START" }
+  | { type: "PAGE_DECODE_BEGIN" }
+  | { type: "PAGE_DECODE_CAPTURE_REQUEST" }
+  | { type: "PAGE_DECODE_CAPTURE_RESULT"; dataUrl: string };

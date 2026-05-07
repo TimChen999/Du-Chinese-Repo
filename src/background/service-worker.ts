@@ -290,6 +290,39 @@ chrome.runtime.onMessage.addListener(
       );
       return;
     }
+
+    if (message.type === "PAGE_DECODE_START") {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        const tabId = tabs[0]?.id;
+        if (tabId) {
+          chrome.tabs.sendMessage(tabId, { type: "PAGE_DECODE_BEGIN" });
+        }
+      });
+      return;
+    }
+
+    if (message.type === "PAGE_DECODE_CAPTURE_REQUEST") {
+      const tabId = sender.tab?.id;
+      if (!tabId) return;
+      chrome.tabs.captureVisibleTab(
+        null as unknown as number,
+        { format: "png" },
+        (dataUrl) => {
+          if (chrome.runtime.lastError || !dataUrl) {
+            chrome.tabs.sendMessage(tabId, {
+              type: "PAGE_DECODE_CAPTURE_RESULT",
+              dataUrl: "",
+            });
+            return;
+          }
+          chrome.tabs.sendMessage(tabId, {
+            type: "PAGE_DECODE_CAPTURE_RESULT",
+            dataUrl,
+          });
+        },
+      );
+      return;
+    }
   },
 );
 

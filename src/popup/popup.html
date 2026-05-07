@@ -9,7 +9,26 @@
 <body>
   <h1>ZiPinYin-Menu</h1>
 
-  <button id="ocr-btn">Select text from image</button>
+  <div class="ocr-action-row">
+    <button id="ocr-btn" class="ocr-action-btn" title="Drag a rectangle over an image or non-selectable text to OCR it">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3 7V5a2 2 0 0 1 2-2h2"/>
+        <path d="M17 3h2a2 2 0 0 1 2 2v2"/>
+        <path d="M21 17v2a2 2 0 0 1-2 2h-2"/>
+        <path d="M7 21H5a2 2 0 0 1-2-2v-2"/>
+        <rect x="8" y="9" width="8" height="6" rx="1"/>
+      </svg>
+      <span>Select area</span>
+    </button>
+    <button id="page-decode-btn" class="ocr-action-btn" title="OCR the visible viewport and overlay clickable real text on top of cipher-protected pages (e.g. fanqienovel)">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3" y="4" width="18" height="14" rx="2"/>
+        <line x1="3" y1="9" x2="21" y2="9"/>
+        <line x1="3" y1="13" x2="21" y2="13"/>
+      </svg>
+      <span>Scan screen</span>
+    </button>
+  </div>
   <button id="library-btn">Open Library</button>
 
   <div class="tab-bar">

@@ -114,7 +114,8 @@ function buildPopupDOM(): void {
       <div id="status"></div>
     </div>
 
-    <button id="ocr-btn">Select text from image</button>
+    <button id="ocr-btn">Select area</button>
+    <button id="page-decode-btn">Scan screen</button>
     <button id="library-btn">Open Library</button>
 
     <div id="tab-vocab" class="hidden">
